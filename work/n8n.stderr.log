@@ -1,0 +1,7 @@
+[PostHog] `sendFeatureFlags` is deprecated and will be removed in a future major version. Pass a `flags` snapshot from `posthog.evaluateFlags(...)` instead — it avoids a second `/flags` request per capture and guarantees the event carries the exact flag values your code branched on.
+(node:25724) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+2026-06-08T21:12:15.960Z [Rudder] error: Response error code: ECONNRESET
+2026-06-08T21:12:16.306Z [Rudder] error: Error: ECONNRESET
+2026-06-09T00:02:00.194Z [Rudder] error: Response error code: ENOTFOUND
+2026-06-09T00:02:00.240Z [Rudder] error: Error: ENOTFOUND

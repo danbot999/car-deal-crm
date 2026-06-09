@@ -1,0 +1,192 @@
+[
+  {
+    "id": "z08K09PwtzaaDmZN",
+    "name": "Auckland Car Listing Monitor",
+    "description": "Receives Facebook Marketplace car listings from the Python monitor, validates them, deduplicates by URL, and stores new listings in an n8n Data Table.",
+    "active": false,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "e0c77d34-c1ec-410a-9b23-b9340180379b",
+          "responseMode": "onReceived",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          0,
+          0
+        ],
+        "id": "d6b9adc7-e643-465c-adf7-4de658262289",
+        "name": "Webhook",
+        "webhookId": "e0c77d34-c1ec-410a-9b23-b9340180379b"
+      },
+      {
+        "parameters": {
+          "resource": "table",
+          "operation": "create",
+          "tableName": "car_listings",
+          "columns": {
+            "column": [
+              {
+                "name": "title",
+                "type": "string"
+              },
+              {
+                "name": "price",
+                "type": "number"
+              },
+              {
+                "name": "url",
+                "type": "string"
+              },
+              {
+                "name": "firstSeen",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {
+            "createIfNotExists": true
+          }
+        },
+        "type": "n8n-nodes-base.dataTable",
+        "typeVersion": 1.1,
+        "position": [
+          260,
+          0
+        ],
+        "id": "0afd8612-6742-4575-af49-d85bc797f544",
+        "name": "Ensure Car Listings Table"
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "const source = $('Webhook').first().json;\nconst listings = source.body?.items ?? source.items ?? [];\n\nif (!Array.isArray(listings)) {\n  return [];\n}\n\nconst now = new Date().toISOString();\nconst seenInPayload = new Set();\nconst output = [];\n\nfor (const listing of listings) {\n  const title = String(listing?.title ?? '').trim();\n  const price = Number(listing?.price);\n  const url = String(listing?.url ?? '').trim();\n\n  const isValid =\n    title.length > 0 &&\n    Number.isFinite(price) &&\n    price >= 0 &&\n    price <= 7000 &&\n    url.includes('/marketplace/item/') &&\n    !seenInPayload.has(url);\n\n  if (!isValid) {\n    continue;\n  }\n\n  seenInPayload.add(url);\n  output.push({\n    json: {\n      title,\n      price,\n      url,\n      firstSeen: now,\n    },\n  });\n}\n\nreturn output;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          520,
+          0
+        ],
+        "id": "d4067688-2b80-4811-9eb5-a6790757395e",
+        "name": "Prepare Car Listings"
+      },
+      {
+        "parameters": {
+          "resource": "row",
+          "operation": "rowNotExists",
+          "dataTableId": {
+            "__rl": true,
+            "mode": "name",
+            "value": "car_listings"
+          },
+          "matchType": "allConditions",
+          "filters": {
+            "conditions": [
+              {
+                "keyName": "url",
+                "condition": "eq",
+                "keyValue": "={{ $json.url }}"
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.dataTable",
+        "typeVersion": 1.1,
+        "position": [
+          780,
+          0
+        ],
+        "id": "c36fe016-d287-47ee-b1a7-269fba43973e",
+        "name": "If Listing Is New"
+      },
+      {
+        "parameters": {
+          "resource": "row",
+          "operation": "insert",
+          "dataTableId": {
+            "__rl": true,
+            "mode": "name",
+            "value": "car_listings"
+          },
+          "columns": {
+            "mappingMode": "autoMapInputData",
+            "value": null
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.dataTable",
+        "typeVersion": 1.1,
+        "position": [
+          1040,
+          0
+        ],
+        "id": "05b7f71e-28f3-45da-96fb-430e6cd8f94c",
+        "name": "Store New Listing"
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Ensure Car Listings Table",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Ensure Car Listings Table": {
+        "main": [
+          [
+            {
+              "node": "Prepare Car Listings",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Car Listings": {
+        "main": [
+          [
+            {
+              "node": "If Listing Is New",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "If Listing Is New": {
+        "main": [
+          [
+            {
+              "node": "Store New Listing",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all"
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "b50eac49-b765-4c30-9c18-e7d372a01f1e",
+    "tags": []
+  }
+]

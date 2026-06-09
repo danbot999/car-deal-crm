@@ -1,0 +1,51 @@
+CREATE TABLE IF NOT EXISTS "Listing" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "facebookUrl" TEXT NOT NULL,
+  "facebookItemId" TEXT,
+  "title" TEXT NOT NULL,
+  "askingPriceCents" INTEGER NOT NULL,
+  "category" TEXT,
+  "source" TEXT NOT NULL DEFAULT 'FACEBOOK_MARKETPLACE',
+  "thumbnailPath" TEXT,
+  "remoteImageUrl" TEXT,
+  "imageCachedAt" DATETIME,
+  "status" TEXT NOT NULL DEFAULT 'NEW',
+  "notes" TEXT,
+  "numberPlate" TEXT,
+  "numberPlateConfidence" INTEGER,
+  "kmsConfidence" INTEGER,
+  "listingDescription" TEXT,
+  "valuationCents" INTEGER,
+  "targetSellPriceCents" INTEGER,
+  "maxBuyPriceCents" INTEGER,
+  "estimatedProfitCents" INTEGER,
+  "valuationStatus" TEXT NOT NULL DEFAULT 'NOT_STARTED',
+  "valuationError" TEXT,
+  "valuationCheckedAt" DATETIME,
+  "valuationSource" TEXT,
+  "extractedYear" INTEGER,
+  "make" TEXT,
+  "model" TEXT,
+  "kms" INTEGER,
+  "aiSummary" TEXT,
+  "dealScore" INTEGER,
+  "riskLevel" TEXT NOT NULL DEFAULT 'UNKNOWN',
+  "aiEvaluationStatus" TEXT NOT NULL DEFAULT 'NOT_STARTED',
+  "aiEvaluatedAt" DATETIME,
+  "aiEvaluationError" TEXT,
+  "profitabilitySummary" TEXT,
+  "commonIssues" TEXT,
+  "inspectionChecklist" TEXT,
+  "sellerQuestions" TEXT,
+  "riskFlags" TEXT,
+  "recommendedAction" TEXT,
+  "firstSeenAt" DATETIME NOT NULL,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "Listing_facebookUrl_key" ON "Listing"("facebookUrl");
+CREATE UNIQUE INDEX IF NOT EXISTS "Listing_facebookItemId_key" ON "Listing"("facebookItemId");
+CREATE INDEX IF NOT EXISTS "Listing_firstSeenAt_idx" ON "Listing"("firstSeenAt");
+CREATE INDEX IF NOT EXISTS "Listing_status_idx" ON "Listing"("status");
+CREATE INDEX IF NOT EXISTS "Listing_askingPriceCents_idx" ON "Listing"("askingPriceCents");

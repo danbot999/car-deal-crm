@@ -1,0 +1,423 @@
+[LOG] Marketplace monitor started. Scanning every 300 seconds.
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4117495661873816/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[ERROR] Marketplace scan failed safely: Page.goto: net::ERR_CONNECTION_RESET at https://www.facebook.com/marketplace/auckland/vehicles?maxPrice=7000
+Call log:
+  - navigating to "https://www.facebook.com/marketplace/auckland/vehicles?maxPrice=7000", waiting until "domcontentloaded"
+
+[LOG] Scanned 0 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Scanned 0 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/987273044108684/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/925205443909582/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[ERROR] Marketplace scan failed safely: Page.goto: net::ERR_CONNECTION_RESET at https://www.facebook.com/marketplace/auckland/vehicles?maxPrice=7000
+Call log:
+  - navigating to "https://www.facebook.com/marketplace/auckland/vehicles?maxPrice=7000", waiting until "domcontentloaded"
+
+[LOG] Scanned 0 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/925205443909582/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/925205443909582/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Scanned 0 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Scanned 0 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Scanned 0 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/925205443909582/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1359037436127462/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1515950523555397/: missing_detail_title
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1394416922370356/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4699279887023864/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1317174569910276/: excluded_category
+[LOG] Scanned 15 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1394416922370356/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4699279887023864/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1317174569910276/: excluded_category
+[LOG] Scanned 16 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1394416922370356/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4699279887023864/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1317174569910276/: excluded_category
+[LOG] Scanned 16 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1394416922370356/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/2434383767052289/: missing_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4699279887023864/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1317174569910276/: excluded_category
+[LOG] Scanned 15 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1394416922370356/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4699279887023864/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1317174569910276/: excluded_category
+[LOG] Scanned 16 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1394416922370356/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4699279887023864/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1317174569910276/: excluded_category
+[LOG] Scanned 16 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Scanned 0 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1394416922370356/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/27354001847549365/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4699279887023864/: sold_or_unavailable
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1317174569910276/: excluded_category
+[LOG] Scanned 16 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4523603387909192/: sold_or_unavailable
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/850395764361541/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/850395764361541/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/845906414825319/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/850395764361541/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1317174569910276/: excluded_category
+[LOG] Scanned 19 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1599871784449913/: finance_only
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Scanned 20 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1663675881513173/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1663675881513173/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1663675881513173/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1334177658648329/: excluded_category
+[LOG] Scanned 21 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1571676184522259/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1712916616718280/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4424799284424480/: excluded_category
+[LOG] Scanned 17 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1571676184522259/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1712916616718280/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4424799284424480/: excluded_category
+[LOG] Scanned 17 items. Payload transmitted successfully to n8n (HTTP 200).
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1571676184522259/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1712916616718280/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1616333452795214/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1938689783458035/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/1512284876964665/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/986702520816007/: excluded_category
+[LOG] Rejected listing https://www.facebook.com/marketplace/item/4424799284424480/: excluded_category
+[LOG] Scanned 17 items. Payload transmitted successfully to n8n (HTTP 200).
+[ L O G ]   M a r k e t p l a c e   m o n i t o r   s t a r t e d .   S c a n n i n g   e v e r y   3 0 0   s e c o n d s .  
+ [ L O G ]   S c a n n i n g   8   M a r k e t p l a c e   s e a r c h   U R L ( s )   t h i s   c y c l e .  
+ [ L O G ]   S e a r c h   U R L   y i e l d e d   2 4   c a n d i d a t e ( s ) :   h t t p s : / / w w w . f a c e b o o k . c o m / m a r k e t p l a c e / a u c k l a n d / v e h i c l e s ? m a x P r i c e = 7 0 0 0  
+ [ L O G ]   S e a r c h   U R L   y i e l d e d   2 4   c a n d i d a t e ( s ) :   h t t p s : / / w w w . f a c e b o o k . c o m / m a r k e t p l a c e / a u c k l a n d / v e h i c l e s ? m a x P r i c e = 7 0 0 0 & q u e r y = c a r  
+ [ L O G ]   S e a r c h   U R L   y i e l d e d   2 4   c a n d i d a t e ( s ) :   h t t p s : / / w w w . f a c e b o o k . c o m / m a r k e t p l a c e / a u c k l a n d / v e h i c l e s ? m a x P r i c e = 7 0 0 0 & q u e r y = c h e a p + c a r  
+ [ L O G ]   S e a r c h   U R L   y i e l d e d   2 4   c a n d i d a t e ( s ) :   h t t p s : / / w w w . f a c e b o o k . c o m / m a r k e t p l a c e / a u c k l a n d / v e h i c l e s ? m a x P r i c e = 7 0 0 0 & q u e r y = a u t o m a t i c + c a r  
+ [ L O G ]   S e a r c h   U R L   y i e l d e d   2 4   c a n d i d a t e ( s ) :   h t t p s : / / w w w . f a c e b o o k . c o m / m a r k e t p l a c e / a u c k l a n d / v e h i c l e s ? m a x P r i c e = 7 0 0 0 & q u e r y = m a n u a l + c a r  
+ 

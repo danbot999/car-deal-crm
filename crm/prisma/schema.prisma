@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Listing {
+  id                   String        @id @default(cuid())
+  facebookUrl          String        @unique
+  facebookItemId       String?       @unique
+  title                String
+  askingPriceCents     Int
+  category             String?
+  source               String        @default("FACEBOOK_MARKETPLACE")
+  thumbnailPath        String?
+  remoteImageUrl       String?
+  imageCachedAt        DateTime?
+  status               String        @default("NEW")
+  notes                String?
+  numberPlate          String?
+  numberPlateConfidence Int?
+  kmsConfidence        Int?
+  listingDescription   String?
+  valuationCents       Int?
+  targetSellPriceCents Int?
+  maxBuyPriceCents     Int?
+  estimatedProfitCents Int?
+  valuationStatus      String        @default("NOT_STARTED")
+  valuationError       String?
+  valuationCheckedAt   DateTime?
+  valuationSource      String?
+  extractedYear        Int?
+  make                 String?
+  model                String?
+  kms                  Int?
+  aiSummary            String?
+  dealScore            Int?
+  riskLevel            String        @default("UNKNOWN")
+  aiEvaluationStatus   String        @default("NOT_STARTED")
+  aiEvaluatedAt        DateTime?
+  aiEvaluationError    String?
+  profitabilitySummary String?
+  commonIssues         String?
+  inspectionChecklist  String?
+  sellerQuestions      String?
+  riskFlags            String?
+  recommendedAction    String?
+  leadReportJson       String?
+  leadSourcesJson      String?
+  leadSavedAt          DateTime?
+  researchModel        String?
+  researchStatus       String        @default("NOT_STARTED")
+  researchError        String?
+  firstSeenAt          DateTime
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@index([firstSeenAt])
+  @@index([status])
+  @@index([askingPriceCents])
+  @@index([leadSavedAt])
+  @@index([researchStatus])
+}
+
+model AdminFlip {
+  id                  String   @id @default(cuid())
+  vehicleTitle        String
+  status              String   @default("WATCHING")
+  sourceUrl           String?
+  purchaseDate        DateTime?
+  saleDate            DateTime?
+  purchasePriceCents  Int      @default(0)
+  repairCostCents     Int      @default(0)
+  otherCostCents      Int      @default(0)
+  salePriceCents      Int?
+  notes               String?
+  journalWentRight    String?
+  journalWentWrong    String?
+  journalLookOutFor   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([status])
+  @@index([purchaseDate])
+  @@index([saleDate])
+}

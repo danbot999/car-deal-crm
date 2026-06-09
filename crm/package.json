@@ -1,0 +1,36 @@
+{
+  "name": "car-deal-crm",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "start:render": "prisma db push && next start -H 0.0.0.0 -p ${PORT:-3001}",
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "db:init": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\init_crm_db.py'\"",
+    "db:push": "prisma db push",
+    "import:n8n": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\import_n8n_listings.py'\"",
+    "sync:n8n": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\sync_n8n_to_crm.py'\"",
+    "test:manual-valuation": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\test_manual_valuation_api.py'\"",
+    "test:lead-report": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\test_lead_report_api.py'\""
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "next": "16.2.7",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.0",
+    "@types/node": "25.9.2",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "eslint": "10.4.1",
+    "postcss": "8.5.6",
+    "prisma": "6.19.3",
+    "tailwindcss": "4.3.0",
+    "typescript": "5.9.3"
+  }
+}
