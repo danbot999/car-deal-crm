@@ -19,6 +19,7 @@ const TRADE_ME_VALUE_URL = "https://www.trademe.co.nz/a/value-my-car";
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 2_500_000;
 const DEFAULT_RESEARCH_MODEL = "gpt-5.4-mini";
+const OPENAI_RETRYABLE_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504, 520]);
 
 type RouteContext = {
   params: Promise<{
@@ -189,6 +190,8 @@ function compactOpenAiError(errorText: string) {
     const parsed = JSON.parse(errorText) as {
       error?: {
         message?: string;
+        code?: string;
+        type?: string;
       };
     };
     if (parsed.error?.message) {
@@ -198,7 +201,49 @@ function compactOpenAiError(errorText: string) {
     // Plain text error bodies are fine.
   }
 
-  return errorText.slice(0, 600);
+  const title = errorText.match(/<title>([\s\S]*?)<\/title>/i)?.[1];
+  if (title) {
+    return title.replace(/\s+/g, " ").trim().slice(0, 240);
+  }
+
+  const textOnly = errorText
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return (textOnly || errorText).slice(0, 600);
+}
+
+function friendlyOpenAiFailure(status: number, errorText: string) {
+  const compact = compactOpenAiError(errorText);
+
+  if (status === 520) {
+    return (
+      "OpenAI returned a temporary 520 gateway error while running live web research. " +
+      "This is usually a service/network-side failure, not a problem with the car listing. " +
+      "Please retry in a minute. If it keeps happening, check the OpenAI API key, billing/quota, and model access."
+    );
+  }
+
+  if ([502, 503, 504].includes(status)) {
+    return `OpenAI is temporarily unavailable (${status}). Please retry shortly.`;
+  }
+
+  if (status === 429) {
+    return "OpenAI rate limit or quota was reached. Check billing/quota, then retry.";
+  }
+
+  if (status === 401 || status === 403) {
+    return "OpenAI rejected the API key or model access. Rotate/check OPENAI_API_KEY and confirm this account can use the configured research model.";
+  }
+
+  return `OpenAI research failed (${status}): ${compact}`;
+}
+
+async function wait(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildResearchContext(
@@ -369,52 +414,71 @@ async function runOpenAiEvaluation({
   model: string;
 }) {
   const contextText = buildResearchContext(listing, metrics);
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      tools: [{ type: "web_search" }],
-      tool_choice: "required",
-      input: [
-        {
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text:
-                "You are a cautious NZ used-car due-diligence analyst. You must research model, engine, gearbox, and platform-specific failure points. Return only JSON matching the schema. Keep seller contact manual."
-            }
-          ]
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: JSON.stringify(contextText)
-            },
-            ...images
-          ]
-        }
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "lead_report",
-          strict: true,
-          schema: leadReportSchema
-        }
+  const requestBody = JSON.stringify({
+    model,
+    tools: [{ type: "web_search" }],
+    tool_choice: "required",
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "You are a cautious NZ used-car due-diligence analyst. You must research model, engine, gearbox, and platform-specific failure points. Return only JSON matching the schema. Keep seller contact manual."
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(contextText)
+          },
+          ...images
+        ]
       }
-    })
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "lead_report",
+        strict: true,
+        schema: leadReportSchema
+      }
+    }
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI research failed: ${compactOpenAiError(errorText)}`);
+  let response: Response | null = null;
+  let lastErrorText = "";
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: requestBody
+    });
+
+    if (response.ok) {
+      break;
+    }
+
+    lastErrorText = await response.text();
+    if (!OPENAI_RETRYABLE_STATUSES.has(response.status) || attempt === 3) {
+      throw new Error(friendlyOpenAiFailure(response.status, lastErrorText));
+    }
+
+    await wait(700 * attempt);
+  }
+
+  if (!response?.ok) {
+    throw new Error(
+      friendlyOpenAiFailure(response?.status ?? 500, lastErrorText)
+    );
   }
 
   const payload = (await response.json()) as unknown;

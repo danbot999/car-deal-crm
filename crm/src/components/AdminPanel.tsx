@@ -1,11 +1,21 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
 import { useRouter } from "next/navigation";
 
+import { SafeCarImage } from "@/components/SafeCarImage";
 import {
+  adminPriorities,
+  adminPriorityLabels,
   flipStatusLabels,
   flipStatuses,
+  type AdminPriority,
   type AdminStats,
   type FlipStatus
 } from "@/lib/admin-shared";
@@ -13,11 +23,28 @@ import { formatMoney } from "@/lib/money";
 
 export type AdminFlipView = {
   id: string;
+  listingId: string | null;
+  listingAvailabilityStatus: string | null;
+  listingAvailabilityReason: string | null;
+  listingLastCheckedAt: string | null;
   vehicleTitle: string;
   status: FlipStatus;
   sourceUrl: string | null;
+  askingPriceCents: number | null;
+  thumbnailPath: string | null;
+  kms: number | null;
+  rego: string | null;
+  sellerContacted: boolean;
+  sellerContactedAt: string | null;
+  priority: AdminPriority;
+  nextAction: string | null;
   purchaseDate: string | null;
   saleDate: string | null;
+  valuationCents: number | null;
+  targetSellPriceCents: number | null;
+  maxBuyPriceCents: number | null;
+  estimatedProfitCents: number | null;
+  valuationCheckedAt: string | null;
   purchasePriceCents: number;
   repairCostCents: number;
   otherCostCents: number;
@@ -34,6 +61,15 @@ type DraftState = {
   vehicleTitle: string;
   status: FlipStatus;
   sourceUrl: string;
+  askingPrice: string;
+  thumbnailPath: string;
+  kms: string;
+  rego: string;
+  sellerContacted: boolean;
+  sellerContactedAt: string;
+  priority: AdminPriority;
+  nextAction: string;
+  valuation: string;
   purchaseDate: string;
   saleDate: string;
   purchasePrice: string;
@@ -46,6 +82,9 @@ type DraftState = {
   journalLookOutFor: string;
 };
 
+type AddMode = "WATCHING" | "BOUGHT" | "SOLD";
+type AdminGroupKey = "watching" | "active" | "sold" | "passed";
+
 type AdminPanelProps = {
   flips: AdminFlipView[];
   stats: AdminStats;
@@ -55,6 +94,15 @@ const blankDraft: DraftState = {
   vehicleTitle: "",
   status: "WATCHING",
   sourceUrl: "",
+  askingPrice: "",
+  thumbnailPath: "",
+  kms: "",
+  rego: "",
+  sellerContacted: false,
+  sellerContactedAt: "",
+  priority: "MEDIUM",
+  nextAction: "",
+  valuation: "",
   purchaseDate: "",
   saleDate: "",
   purchasePrice: "",
@@ -67,6 +115,67 @@ const blankDraft: DraftState = {
   journalLookOutFor: ""
 };
 
+const addModes: Record<
+  AddMode,
+  {
+    description: string;
+    label: string;
+    nextAction: string;
+    status: FlipStatus;
+  }
+> = {
+  WATCHING: {
+    description: "Found outside the Dashboard and worth keeping an eye on.",
+    label: "Watching lead",
+    nextAction: "Decide whether to contact seller.",
+    status: "WATCHING"
+  },
+  BOUGHT: {
+    description: "Already purchased and now part of active stock.",
+    label: "Bought car",
+    nextAction: "Log costs, repairs, and prep for sale.",
+    status: "BOUGHT"
+  },
+  SOLD: {
+    description: "Backfill a completed flip and write the lesson down.",
+    label: "Sold flip",
+    nextAction: "Complete journal and review the numbers.",
+    status: "SOLD"
+  }
+};
+
+const adminGroups: Array<{
+  description: string;
+  key: AdminGroupKey;
+  statuses: FlipStatus[];
+  title: string;
+}> = [
+  {
+    description: "Cars you are watching, checking, or deciding whether to contact.",
+    key: "watching",
+    statuses: ["WATCHING"],
+    title: "Watching"
+  },
+  {
+    description: "Cars you own or are actively preparing/listing.",
+    key: "active",
+    statuses: ["BOUGHT", "IN_REPAIR", "LISTED"],
+    title: "Active stock"
+  },
+  {
+    description: "Completed flips, numbers, and journal lessons.",
+    key: "sold",
+    statuses: ["SOLD"],
+    title: "Sold history"
+  },
+  {
+    description: "Cars you decided not to chase, kept for reference.",
+    key: "passed",
+    statuses: ["PASSED"],
+    title: "Passed"
+  }
+];
+
 const statusTone: Record<FlipStatus, string> = {
   WATCHING: "bg-sky-100 text-sky-800",
   BOUGHT: "bg-violet-100 text-violet-800",
@@ -75,6 +184,50 @@ const statusTone: Record<FlipStatus, string> = {
   SOLD: "bg-emerald-100 text-emerald-800",
   PASSED: "bg-slate-100 text-slate-700"
 };
+
+const priorityTone: Record<AdminPriority, string> = {
+  LOW: "bg-slate-100 text-slate-700",
+  MEDIUM: "bg-amber-100 text-amber-800",
+  HIGH: "bg-rose-100 text-rose-800"
+};
+
+const marketplaceAvailabilityTone: Record<string, string> = {
+  ACTIVE: "bg-emerald-100 text-emerald-800",
+  NEEDS_REVIEW: "bg-amber-100 text-amber-800",
+  POSSIBLY_SOLD: "bg-orange-100 text-orange-800",
+  CONFIRMED_SOLD: "bg-rose-100 text-rose-800",
+  SOLD: "bg-rose-100 text-rose-800",
+  UNAVAILABLE: "bg-orange-100 text-orange-800",
+  EXPIRED: "bg-slate-200 text-slate-700",
+  UNKNOWN: "bg-amber-100 text-amber-800"
+};
+
+const marketplaceAvailabilityLabel: Record<string, string> = {
+  ACTIVE: "Marketplace active",
+  NEEDS_REVIEW: "Marketplace needs review",
+  POSSIBLY_SOLD: "Marketplace needs confirmation",
+  CONFIRMED_SOLD: "Marketplace confirmed sold",
+  SOLD: "Marketplace sold",
+  UNAVAILABLE: "Marketplace unavailable",
+  EXPIRED: "Marketplace expired",
+  UNKNOWN: "Marketplace checking"
+};
+
+const nzDateFormatter = new Intl.DateTimeFormat("en-NZ", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Pacific/Auckland"
+});
+
+function draftForMode(mode: AddMode): DraftState {
+  const config = addModes[mode];
+
+  return {
+    ...blankDraft,
+    status: config.status,
+    nextAction: config.nextAction
+  };
+}
 
 function inputMoney(cents: number | null | undefined) {
   if (cents == null || cents === 0) {
@@ -93,6 +246,15 @@ function flipToDraft(flip: AdminFlipView): DraftState {
     vehicleTitle: flip.vehicleTitle,
     status: flip.status,
     sourceUrl: flip.sourceUrl ?? "",
+    askingPrice: inputMoney(flip.askingPriceCents),
+    thumbnailPath: flip.thumbnailPath ?? "",
+    kms: flip.kms ? String(flip.kms) : "",
+    rego: flip.rego ?? "",
+    sellerContacted: flip.sellerContacted,
+    sellerContactedAt: inputDate(flip.sellerContactedAt),
+    priority: flip.priority,
+    nextAction: flip.nextAction ?? "",
+    valuation: inputMoney(flip.valuationCents),
     purchaseDate: inputDate(flip.purchaseDate),
     saleDate: inputDate(flip.saleDate),
     purchasePrice: inputMoney(flip.purchasePriceCents),
@@ -120,11 +282,8 @@ function profit(flip: AdminFlipView) {
   return flip.salePriceCents - totalCost(flip);
 }
 
-function lastUpdatedLabel(value: string) {
-  return new Intl.DateTimeFormat("en-NZ", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value));
+function updatedLabel(value: string) {
+  return nzDateFormatter.format(new Date(value));
 }
 
 function buildPayload(draft: DraftState) {
@@ -132,6 +291,15 @@ function buildPayload(draft: DraftState) {
     vehicleTitle: draft.vehicleTitle,
     status: draft.status,
     sourceUrl: draft.sourceUrl,
+    askingPrice: draft.askingPrice,
+    thumbnailPath: draft.thumbnailPath,
+    kms: draft.kms,
+    rego: draft.rego,
+    sellerContacted: draft.sellerContacted,
+    sellerContactedAt: draft.sellerContactedAt,
+    priority: draft.priority,
+    nextAction: draft.nextAction,
+    valuation: draft.valuation,
     purchaseDate: draft.purchaseDate,
     saleDate: draft.saleDate,
     purchasePrice: draft.purchasePrice,
@@ -145,11 +313,68 @@ function buildPayload(draft: DraftState) {
   };
 }
 
+function updateSet<T extends string>(current: Set<T>, id: T) {
+  const next = new Set(current);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+
+  return next;
+}
+
+async function compressImage(file: File) {
+  if (!file.type.startsWith("image/") || file.type === "image/svg+xml") {
+    throw new Error("Please choose a JPEG, PNG, or WebP photo.");
+  }
+
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error("Photo is too large. Please choose an image under 8MB.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    const loaded = new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () =>
+        reject(new Error("Could not read that image. Try a different photo."));
+    });
+    image.src = objectUrl;
+    await loaded;
+
+    const maxSide = 960;
+    const scale = Math.min(
+      1,
+      maxSide / Math.max(image.naturalWidth, image.naturalHeight)
+    );
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Your browser could not prepare the photo.");
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function Field({
   label,
   name,
   onChange,
   placeholder,
+  required = false,
   type = "text",
   value
 }: {
@@ -157,19 +382,20 @@ function Field({
   name: keyof DraftState;
   onChange: (name: keyof DraftState, value: string) => void;
   placeholder?: string;
+  required?: boolean;
   type?: string;
   value: string;
 }) {
   return (
-    <label className="grid gap-2">
-      <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+    <label className="grid gap-1.5">
+      <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">
         {label}
       </span>
       <input
         className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-violet-200 transition focus:ring-4"
-        name={name}
         onChange={(event) => onChange(name, event.target.value)}
         placeholder={placeholder}
+        required={required}
         type={type}
         value={value}
       />
@@ -191,18 +417,135 @@ function TextAreaField({
   value: string;
 }) {
   return (
-    <label className="grid gap-2">
-      <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+    <label className="grid gap-1.5">
+      <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">
         {label}
       </span>
       <textarea
-        className="min-h-28 resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none ring-violet-200 transition focus:ring-4"
-        name={name}
+        className="min-h-24 resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none ring-violet-200 transition focus:ring-4"
         onChange={(event) => onChange(name, event.target.value)}
         placeholder={placeholder}
         value={value}
       />
     </label>
+  );
+}
+
+function SelectField({
+  label,
+  onChange,
+  options,
+  value
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </span>
+      <select
+        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-violet-200 transition focus:ring-4"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function PhotoField({
+  onChange,
+  title = "Car photo",
+  value
+}: {
+  onChange: (value: string) => void;
+  title?: string;
+  value: string;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  async function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const dataUrl = await compressImage(file);
+      onChange(dataUrl);
+    } catch (photoError) {
+      setError(
+        photoError instanceof Error
+          ? photoError.message
+          : "Could not prepare that photo."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-3 rounded-[1.5rem] border border-slate-100 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-slate-400">
+            Photo
+          </p>
+          <p className="mt-1 text-sm font-bold text-slate-950">{title}</p>
+        </div>
+        {value ? (
+          <button
+            className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+            onClick={() => onChange("")}
+            type="button"
+          >
+            Remove photo
+          </button>
+        ) : null}
+      </div>
+
+      <SafeCarImage
+        alt={title}
+        className="h-44 w-full rounded-3xl object-cover shadow-md ring-1 ring-slate-200"
+        fallbackClassName="flex h-44 items-center justify-center rounded-3xl bg-slate-100 text-sm font-bold text-slate-400 ring-1 ring-slate-200"
+        src={value}
+      />
+
+      <label className="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-slate-200 transition hover:-translate-y-0.5 hover:bg-slate-800">
+        {isProcessing ? "Preparing photo..." : value ? "Replace photo" : "Upload photo"}
+        <input
+          accept="image/jpeg,image/png,image/webp"
+          className="sr-only"
+          disabled={isProcessing}
+          onChange={handleFile}
+          type="file"
+        />
+      </label>
+      <p className="text-xs leading-5 text-slate-500">
+        Photos are resized in your browser before saving, so manual and sold
+        flips keep a clean thumbnail without extra setup.
+      </p>
+      {error ? (
+        <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -234,11 +577,117 @@ function StatCard({
   );
 }
 
+function PhotoPreview({
+  title,
+  value
+}: {
+  title: string;
+  value: string | null;
+}) {
+  return (
+    <SafeCarImage
+      alt={title}
+      className="h-28 w-36 rounded-3xl object-cover shadow-md ring-1 ring-slate-200"
+      fallbackClassName="flex h-28 w-36 items-center justify-center rounded-3xl bg-slate-100 text-xs font-bold text-slate-400 ring-1 ring-slate-200"
+      src={value}
+    />
+  );
+}
+
+function adminDealProfitTone(value: number | null) {
+  if (value == null) {
+    return "text-slate-500";
+  }
+
+  return value >= 0 ? "text-emerald-700" : "text-rose-700";
+}
+
+function MoneySnapshot({ flip }: { flip: AdminFlipView }) {
+  const flipProfit = profit(flip);
+  const cost = totalCost(flip);
+
+  return (
+    <div className="grid grid-cols-2 gap-2 rounded-3xl bg-slate-50 p-3 text-sm md:grid-cols-4 xl:min-w-[42rem]">
+      <div>
+        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+          Asking
+        </p>
+        <p className="mt-1 font-bold">{formatMoney(flip.askingPriceCents)}</p>
+      </div>
+      <div>
+        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+          Value
+        </p>
+        <p className="mt-1 font-bold">{formatMoney(flip.valuationCents)}</p>
+      </div>
+      <div>
+        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+          Max buy
+        </p>
+        <p className="mt-1 font-bold">{formatMoney(flip.maxBuyPriceCents)}</p>
+      </div>
+      <div>
+        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+          Margin
+        </p>
+        <p
+          className={`mt-1 font-bold ${adminDealProfitTone(
+            flip.estimatedProfitCents
+          )}`}
+        >
+          {formatMoney(flip.estimatedProfitCents)}
+        </p>
+      </div>
+      <div>
+        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+          Cost
+        </p>
+        <p className="mt-1 font-bold">{formatMoney(cost)}</p>
+      </div>
+      <div>
+        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+          Sold
+        </p>
+        <p className="mt-1 font-bold">
+          {flip.salePriceCents == null ? "Pending" : formatMoney(flip.salePriceCents)}
+        </p>
+      </div>
+      <div>
+        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+          Profit
+        </p>
+        <p
+          className={`mt-1 font-bold ${
+            flipProfit == null
+              ? "text-slate-500"
+              : flipProfit >= 0
+                ? "text-emerald-700"
+                : "text-rose-700"
+          }`}
+        >
+          {flipProfit == null ? "Pending" : formatMoney(flipProfit)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function AdminPanel({ flips, stats }: AdminPanelProps) {
   const router = useRouter();
-  const [newDraft, setNewDraft] = useState<DraftState>(blankDraft);
+  const [addMode, setAddMode] = useState<AddMode>("WATCHING");
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [expandedFlipIds, setExpandedFlipIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [expandedGroups, setExpandedGroups] = useState<Set<AdminGroupKey>>(
+    () => new Set(["watching", "active", "sold"])
+  );
+  const [newDraft, setNewDraft] = useState<DraftState>(() =>
+    draftForMode("WATCHING")
+  );
   const [drafts, setDrafts] = useState<Record<string, DraftState>>({});
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -246,6 +695,10 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
     setDrafts(
       Object.fromEntries(flips.map((flip) => [flip.id, flipToDraft(flip)]))
     );
+    setExpandedFlipIds((current) => {
+      const liveIds = new Set(flips.map((flip) => flip.id));
+      return new Set([...current].filter((id) => liveIds.has(id)));
+    });
   }, [flips]);
 
   const pipeline = useMemo(
@@ -261,6 +714,31 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
     [flips]
   );
 
+  const statusOptions = flipStatuses.map((status) => ({
+    label: flipStatusLabels[status],
+    value: status
+  }));
+  const priorityOptions = adminPriorities.map((priority) => ({
+    label: adminPriorityLabels[priority],
+    value: priority
+  }));
+  const groupedSections = useMemo(
+    () =>
+      adminGroups.map((group) => ({
+        ...group,
+        flips: flips.filter((flip) => group.statuses.includes(flip.status))
+      })),
+    [flips]
+  );
+
+  function chooseAddMode(mode: AddMode) {
+    setAddMode(mode);
+    setNewDraft(draftForMode(mode));
+    setIsAddOpen(true);
+    setMessage(null);
+    setError(null);
+  }
+
   const updateNewDraft = (name: keyof DraftState, value: string) => {
     setNewDraft((current) => ({ ...current, [name]: value }));
   };
@@ -268,7 +746,7 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
   const updateDraft = (
     id: string,
     name: keyof DraftState,
-    value: string
+    value: string | boolean
   ) => {
     setDrafts((current) => ({
       ...current,
@@ -313,12 +791,14 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
 
       setMessage(payload.message ?? successMessage);
       router.refresh();
+      return true;
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
           : "The admin update failed."
       );
+      return false;
     } finally {
       setPendingAction(null);
     }
@@ -326,14 +806,17 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
 
   async function addFlip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submitRequest({
+    const created = await submitRequest({
       actionId: "create",
       body: buildPayload(newDraft),
       method: "POST",
       successMessage: "Car added.",
       url: "/api/admin/flips"
     });
-    setNewDraft(blankDraft);
+
+    if (created) {
+      setNewDraft(draftForMode(addMode));
+    }
   }
 
   async function saveFlip(id: string) {
@@ -351,495 +834,846 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
     });
   }
 
-  async function deleteFlip(id: string, title: string) {
-    const confirmed = window.confirm(`Remove "${title}" from Admin?`);
-    if (!confirmed) {
-      return;
-    }
-
-    await submitRequest({
+  async function deleteFlip(id: string) {
+    const deleted = await submitRequest({
       actionId: `delete-${id}`,
       method: "DELETE",
       successMessage: "Car removed.",
       url: `/api/admin/flips/${id}`
     });
+
+    if (deleted) {
+      setDeleteConfirmId(null);
+    }
+  }
+
+  function toggleGroup(key: AdminGroupKey) {
+    setExpandedGroups((current) => updateSet(current, key));
   }
 
   return (
     <>
-        <section className="overflow-hidden rounded-[2.5rem] border border-white/70 bg-slate-950 p-8 text-white shadow-2xl shadow-slate-300 md:p-10">
-          <div className="grid gap-8 lg:grid-cols-[1.3fr_0.7fr] lg:items-end">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.32em] text-violet-300">
-                Admin
-              </p>
-              <h1 className="mt-5 max-w-5xl text-5xl font-semibold tracking-tight md:text-7xl">
-                Run the business side without spreadsheets.
-              </h1>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">
-                Add cars, track money spent, move vehicles through the flip
-                pipeline, record sale outcomes, and keep a short journal so each
-                deal makes the next one sharper.
-              </p>
-            </div>
-            <div className="rounded-[2rem] border border-white/10 bg-white/10 p-5 backdrop-blur">
-              <p className="text-sm font-medium text-slate-300">
-                Operating rule
-              </p>
-              <div className="mt-4 space-y-3 text-sm text-slate-200">
-                <div className="flex justify-between gap-4">
-                  <span>Track every purchase cost</span>
-                  <strong>Buy + repairs + misc</strong>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span>Open capital</span>
-                  <strong>Money still tied up</strong>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span>Journal each flip</span>
-                  <strong>Repeat the lesson</strong>
-                </div>
+      <section className="overflow-hidden rounded-[2.5rem] border border-white/70 bg-slate-950 p-8 text-white shadow-2xl shadow-slate-300 md:p-10">
+        <div className="grid gap-8 lg:grid-cols-[1.3fr_0.7fr] lg:items-end">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.32em] text-violet-300">
+              Admin
+            </p>
+            <h1 className="mt-5 max-w-5xl text-5xl font-semibold tracking-tight md:text-7xl">
+              One tidy place for every flip.
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">
+              Save leads from the Dashboard, add cars found elsewhere, backfill
+              sold flips, track the money, and keep a useful journal without
+              digging through a giant form.
+            </p>
+          </div>
+          <div className="rounded-[2rem] border border-white/10 bg-white/10 p-5 backdrop-blur">
+            <p className="text-sm font-medium text-slate-300">
+              Workflow proof
+            </p>
+            <div className="mt-4 space-y-3 text-sm text-slate-200">
+              <div className="flex justify-between gap-4">
+                <span>Spot a lead</span>
+                <strong>Watching</strong>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span>Buy it</span>
+                <strong>Costs start</strong>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span>Sell it</span>
+                <strong>Journal the lesson</strong>
               </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-4 xl:grid-cols-7">
-          <StatCard label="Cars tracked" value={stats.carsTracked} />
-          <StatCard label="Cars bought" value={stats.carsBought} />
-          <StatCard label="Active stock" value={stats.activeInventory} />
-          <StatCard label="Sold" tone="good" value={stats.carsSold} />
-          <StatCard
-            label="Open capital"
-            tone="warning"
-            value={formatMoney(stats.openCapitalCents)}
-          />
-          <StatCard label="Revenue" value={formatMoney(stats.revenueCents)} />
-          <StatCard
-            label="Profit"
-            tone="good"
-            value={formatMoney(stats.realizedProfitCents)}
-          />
-        </section>
+      <section className="mt-8 grid gap-4 md:grid-cols-4 xl:grid-cols-7">
+        <StatCard label="Cars tracked" value={stats.carsTracked} />
+        <StatCard label="Cars bought" value={stats.carsBought} />
+        <StatCard label="Active stock" value={stats.activeInventory} />
+        <StatCard label="Sold" tone="good" value={stats.carsSold} />
+        <StatCard
+          label="Open capital"
+          tone="warning"
+          value={formatMoney(stats.openCapitalCents)}
+        />
+        <StatCard label="Revenue" value={formatMoney(stats.revenueCents)} />
+        <StatCard
+          label="Profit"
+          tone="good"
+          value={formatMoney(stats.realizedProfitCents)}
+        />
+      </section>
 
-        <section className="mt-8 rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-xl shadow-slate-200/70">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
-                Flowchart
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-                Flip pipeline
-              </h2>
-            </div>
-            <span className="rounded-full bg-violet-100 px-4 py-2 text-sm font-bold text-violet-800">
-              {stats.journalCount} journaled flips
-            </span>
-          </div>
-
-          <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-            {pipeline.map((step) => (
-              <div
-                className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
-                key={step.status}
-              >
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-bold ${statusTone[step.status]}`}
-                >
-                  {flipStatusLabels[step.status]}
-                </span>
-                <p className="mt-4 text-3xl font-semibold text-slate-950">
-                  {step.count}
-                </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {formatMoney(step.valueCents)} tracked cost
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {(message || error) && (
-          <div
-            className={`mt-6 rounded-3xl border px-5 py-4 text-sm font-semibold ${
-              error
-                ? "border-rose-200 bg-rose-50 text-rose-700"
-                : "border-emerald-200 bg-emerald-50 text-emerald-700"
-            }`}
-          >
-            {error ?? message}
-          </div>
-        )}
-
-        <section className="mt-8 grid gap-6 xl:grid-cols-[0.9fr_1.4fr]">
-          <form
-            className="rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-xl shadow-slate-200/70"
-            onSubmit={addFlip}
-          >
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-violet-500">
-              Add/remove without code
+      <section className="mt-8 rounded-[2rem] border border-white/80 bg-white/85 p-5 shadow-xl shadow-slate-200/70">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
+              Flowchart
             </p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-              Add a car to Admin
+              Flip pipeline
             </h2>
-            <div className="mt-5 grid gap-4">
-              <Field
-                label="Vehicle"
-                name="vehicleTitle"
-                onChange={updateNewDraft}
-                placeholder="e.g. 2007 Toyota Auris"
-                value={newDraft.vehicleTitle}
-              />
-              <label className="grid gap-2">
-                <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Status
-                </span>
-                <select
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-violet-200 transition focus:ring-4"
-                  onChange={(event) =>
-                    updateNewDraft("status", event.target.value)
-                  }
-                  value={newDraft.status}
-                >
-                  {flipStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {flipStatusLabels[status]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Field
-                label="Source URL"
-                name="sourceUrl"
-                onChange={updateNewDraft}
-                placeholder="Facebook or Trade Me link"
-                value={newDraft.sourceUrl}
-              />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                  label="Purchase date"
-                  name="purchaseDate"
-                  onChange={updateNewDraft}
-                  type="date"
-                  value={newDraft.purchaseDate}
-                />
-                <Field
-                  label="Sale date"
-                  name="saleDate"
-                  onChange={updateNewDraft}
-                  type="date"
-                  value={newDraft.saleDate}
-                />
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                  label="Purchase $"
-                  name="purchasePrice"
-                  onChange={updateNewDraft}
-                  placeholder="3500"
-                  value={newDraft.purchasePrice}
-                />
-                <Field
-                  label="Repairs $"
-                  name="repairCost"
-                  onChange={updateNewDraft}
-                  placeholder="450"
-                  value={newDraft.repairCost}
-                />
-                <Field
-                  label="Other costs $"
-                  name="otherCost"
-                  onChange={updateNewDraft}
-                  placeholder="WOF, rego, fuel"
-                  value={newDraft.otherCost}
-                />
-                <Field
-                  label="Sale $"
-                  name="salePrice"
-                  onChange={updateNewDraft}
-                  placeholder="Leave blank until sold"
-                  value={newDraft.salePrice}
-                />
-              </div>
-              <TextAreaField
-                label="Quick notes"
-                name="notes"
-                onChange={updateNewDraft}
-                placeholder="Why it was bought, what needs doing, who owns the next action..."
-                value={newDraft.notes}
-              />
-              <button
-                className="rounded-3xl bg-slate-950 px-5 py-4 text-sm font-bold text-white shadow-xl shadow-slate-300 transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={pendingAction === "create"}
+          </div>
+          <span className="rounded-full bg-violet-100 px-4 py-2 text-sm font-bold text-violet-800">
+            {stats.journalCount} journaled flips
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {pipeline.map((step) => (
+            <div
+              className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
+              key={step.status}
+            >
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold ${statusTone[step.status]}`}
               >
-                {pendingAction === "create" ? "Adding..." : "Add car"}
-              </button>
+                {flipStatusLabels[step.status]}
+              </span>
+              <p className="mt-4 text-3xl font-semibold text-slate-950">
+                {step.count}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {formatMoney(step.valueCents)} tracked cost
+              </p>
             </div>
-          </form>
+          ))}
+        </div>
+      </section>
 
-          <div className="grid gap-4">
-            {flips.length === 0 ? (
-              <div className="rounded-[2rem] border border-white/80 bg-white/90 p-10 text-center shadow-xl shadow-slate-200/70">
-                <p className="text-2xl font-semibold text-slate-950">
-                  No admin cars yet.
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Add your first watched, bought, or sold car and this page will
-                  start showing your money flow automatically.
-                </p>
-              </div>
-            ) : (
-              flips.map((flip) => {
-                const draft = drafts[flip.id] ?? flipToDraft(flip);
-                const flipProfit = profit(flip);
-                const isProfitable =
-                  flipProfit != null ? flipProfit >= 0 : undefined;
+      {(message || error) && (
+        <div
+          className={`mt-6 rounded-3xl border px-5 py-4 text-sm font-semibold ${
+            error
+              ? "border-rose-200 bg-rose-50 text-rose-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {error ?? message}
+        </div>
+      )}
 
-                return (
-                  <article
-                    className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-xl shadow-slate-200/70"
-                    key={flip.id}
+      <section className="mt-8 grid gap-4">
+        <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-xl shadow-slate-200/70">
+          <div className="flex items-center justify-between gap-4 p-5">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-violet-500">
+                Add car
+              </p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight">
+                Quick entry for leads, purchases, and sold flips
+              </h2>
+            </div>
+            <button
+              aria-controls="admin-add-panel"
+              aria-expanded={isAddOpen}
+              className="shrink-0 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+              onClick={() => setIsAddOpen((current) => !current)}
+              type="button"
+            >
+              {isAddOpen ? "Collapse" : "Expand"}
+            </button>
+          </div>
+
+          {isAddOpen ? (
+            <div className="border-t border-slate-100 p-5" id="admin-add-panel">
+              <div className="grid gap-3 md:grid-cols-3">
+                {(Object.keys(addModes) as AddMode[]).map((mode) => (
+                  <button
+                    className={`rounded-3xl border p-4 text-left transition hover:-translate-y-0.5 ${
+                      addMode === mode
+                        ? "border-slate-950 bg-slate-950 text-white shadow-xl shadow-slate-300"
+                        : "border-slate-200 bg-white text-slate-950"
+                    }`}
+                    key={mode}
+                    onClick={() => chooseAddMode(mode)}
+                    type="button"
                   >
-                    <div className="grid gap-5 p-5 lg:grid-cols-[1fr_auto] lg:items-start">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${statusTone[flip.status]}`}
-                          >
-                            {flipStatusLabels[flip.status]}
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                            Updated {lastUpdatedLabel(flip.updatedAt)}
-                          </span>
-                          {flip.sourceUrl ? (
-                            <a
-                              className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-bold text-cyan-800 hover:bg-cyan-200"
-                              href={flip.sourceUrl}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Source link
-                            </a>
-                          ) : null}
-                        </div>
-                        <h3 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-                          {flip.vehicleTitle}
-                        </h3>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3 rounded-3xl bg-slate-50 p-4 text-sm">
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                            Cost
-                          </p>
-                          <p className="mt-1 font-bold">
-                            {formatMoney(totalCost(flip))}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                            Sold
-                          </p>
-                          <p className="mt-1 font-bold">
-                            {formatMoney(flip.salePriceCents ?? 0)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                            Profit
-                          </p>
-                          <p
-                            className={`mt-1 font-bold ${
-                              isProfitable === true
-                                ? "text-emerald-700"
-                                : isProfitable === false
-                                  ? "text-rose-700"
-                                  : "text-slate-500"
-                            }`}
-                          >
-                            {flipProfit == null
-                              ? "Pending"
-                              : formatMoney(flipProfit)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                    <span className="block text-sm font-bold">
+                      {addModes[mode].label}
+                    </span>
+                    <span
+                      className={`mt-2 block text-sm leading-6 ${
+                        addMode === mode ? "text-slate-300" : "text-slate-500"
+                      }`}
+                    >
+                      {addModes[mode].description}
+                    </span>
+                  </button>
+                ))}
+              </div>
 
-                    <div className="border-t border-slate-100 p-5">
-                      <div className="grid gap-4 lg:grid-cols-[1fr_0.7fr]">
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <Field
-                            label="Vehicle"
-                            name="vehicleTitle"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
+              <form className="mt-5 grid gap-5" onSubmit={addFlip}>
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                  <div className="grid gap-5">
+                    <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                      <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                        Lead
+                      </h3>
+                      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        <Field
+                          label="Vehicle"
+                          name="vehicleTitle"
+                          onChange={updateNewDraft}
+                          placeholder="e.g. 2007 Toyota Auris"
+                          required
+                          value={newDraft.vehicleTitle}
+                        />
+                        <SelectField
+                          label="Status"
+                          onChange={(value) =>
+                            updateNewDraft("status", value as FlipStatus)
+                          }
+                          options={statusOptions}
+                          value={newDraft.status}
+                        />
+                        <Field
+                          label="Source URL"
+                          name="sourceUrl"
+                          onChange={updateNewDraft}
+                          placeholder="Facebook or Trade Me link"
+                          value={newDraft.sourceUrl}
+                        />
+                        <Field
+                          label="Asking $"
+                          name="askingPrice"
+                          onChange={updateNewDraft}
+                          placeholder="3500"
+                          value={newDraft.askingPrice}
+                        />
+                        <Field
+                          label="Trade Me value"
+                          name="valuation"
+                          onChange={updateNewDraft}
+                          placeholder="5100"
+                          value={newDraft.valuation}
+                        />
+                        <Field
+                          label="KMs"
+                          name="kms"
+                          onChange={updateNewDraft}
+                          placeholder="181000"
+                          value={newDraft.kms}
+                        />
+                        <Field
+                          label="Rego"
+                          name="rego"
+                          onChange={updateNewDraft}
+                          placeholder="ABC123"
+                          value={newDraft.rego}
+                        />
+                        <SelectField
+                          label="Priority"
+                          onChange={(value) =>
+                            updateNewDraft("priority", value as AdminPriority)
+                          }
+                          options={priorityOptions}
+                          value={newDraft.priority}
+                        />
+                        <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
+                          <input
+                            checked={newDraft.sellerContacted}
+                            className="h-4 w-4"
+                            onChange={(event) =>
+                              setNewDraft((current) => ({
+                                ...current,
+                                sellerContacted: event.target.checked
+                              }))
                             }
-                            value={draft.vehicleTitle}
+                            type="checkbox"
                           />
-                          <label className="grid gap-2">
-                            <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                              Status
-                            </span>
-                            <select
-                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-violet-200 transition focus:ring-4"
-                              onChange={(event) =>
-                                updateDraft(
-                                  flip.id,
-                                  "status",
-                                  event.target.value
-                                )
-                              }
-                              value={draft.status}
-                            >
-                              {flipStatuses.map((status) => (
-                                <option key={status} value={status}>
-                                  {flipStatusLabels[status]}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <Field
-                            label="Source URL"
-                            name="sourceUrl"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            value={draft.sourceUrl}
-                          />
+                          Contacted seller
+                        </label>
+                        <Field
+                          label="Contacted date"
+                          name="sellerContactedAt"
+                          onChange={updateNewDraft}
+                          type="date"
+                          value={newDraft.sellerContactedAt}
+                        />
+                        <Field
+                          label="Next action"
+                          name="nextAction"
+                          onChange={updateNewDraft}
+                          placeholder="Message seller"
+                          value={newDraft.nextAction}
+                        />
+                      </div>
+                    </section>
+
+                    {addMode !== "WATCHING" ? (
+                      <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                        <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                          Purchase and sale
+                        </h3>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                           <Field
                             label="Purchase date"
                             name="purchaseDate"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
+                            onChange={updateNewDraft}
                             type="date"
-                            value={draft.purchaseDate}
-                          />
-                          <Field
-                            label="Sale date"
-                            name="saleDate"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            type="date"
-                            value={draft.saleDate}
+                            value={newDraft.purchaseDate}
                           />
                           <Field
                             label="Purchase $"
                             name="purchasePrice"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            value={draft.purchasePrice}
+                            onChange={updateNewDraft}
+                            placeholder="2500"
+                            value={newDraft.purchasePrice}
                           />
                           <Field
                             label="Repair $"
                             name="repairCost"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            value={draft.repairCost}
+                            onChange={updateNewDraft}
+                            placeholder="450"
+                            value={newDraft.repairCost}
                           />
                           <Field
                             label="Other $"
                             name="otherCost"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            value={draft.otherCost}
+                            onChange={updateNewDraft}
+                            placeholder="120"
+                            value={newDraft.otherCost}
                           />
-                          <Field
-                            label="Sale $"
-                            name="salePrice"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            value={draft.salePrice}
-                          />
+                          {addMode === "SOLD" ? (
+                            <>
+                              <Field
+                                label="Sale date"
+                                name="saleDate"
+                                onChange={updateNewDraft}
+                                type="date"
+                                value={newDraft.saleDate}
+                              />
+                              <Field
+                                label="Sale $"
+                                name="salePrice"
+                                onChange={updateNewDraft}
+                                placeholder="5200"
+                                value={newDraft.salePrice}
+                              />
+                            </>
+                          ) : null}
                         </div>
+                      </section>
+                    ) : null}
 
-                        <TextAreaField
-                          label="Admin notes"
-                          name="notes"
-                          onChange={(name, value) =>
-                            updateDraft(flip.id, name, value)
-                          }
-                          placeholder="Tasks, ownership, pickup details, repair plan, listing plan..."
-                          value={draft.notes}
-                        />
-                      </div>
-
-                      <div className="mt-5 rounded-[1.5rem] border border-violet-100 bg-violet-50/60 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.22em] text-violet-500">
-                              Flip journal
-                            </p>
-                            <p className="mt-1 text-sm text-slate-600">
-                              Keep the practical lessons attached to the car
-                              while they are fresh.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                    {addMode === "SOLD" ? (
+                      <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                        <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                          Journal
+                        </h3>
+                        <div className="mt-4 grid gap-4 xl:grid-cols-3">
                           <TextAreaField
                             label="What went right"
                             name="journalWentRight"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            placeholder="Good buy reason, negotiation win, repair that paid off..."
-                            value={draft.journalWentRight}
+                            onChange={updateNewDraft}
+                            placeholder="Negotiation, repair, resale, timing..."
+                            value={newDraft.journalWentRight}
                           />
                           <TextAreaField
                             label="What went wrong"
                             name="journalWentWrong"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            placeholder="Hidden cost, slow sale reason, inspection miss..."
-                            value={draft.journalWentWrong}
+                            onChange={updateNewDraft}
+                            placeholder="Hidden costs, slow sale, missed checks..."
+                            value={newDraft.journalWentWrong}
                           />
                           <TextAreaField
                             label="Look out for next time"
                             name="journalLookOutFor"
-                            onChange={(name, value) =>
-                              updateDraft(flip.id, name, value)
-                            }
-                            placeholder="Model issues, seller red flags, price ceiling lesson..."
-                            value={draft.journalLookOutFor}
+                            onChange={updateNewDraft}
+                            placeholder="Model issue, seller red flag, price ceiling..."
+                            value={newDraft.journalLookOutFor}
                           />
                         </div>
+                      </section>
+                    ) : null}
+                  </div>
+
+                  <div className="grid content-start gap-4">
+                    <PhotoField
+                      onChange={(value) =>
+                        updateNewDraft("thumbnailPath", value)
+                      }
+                      value={newDraft.thumbnailPath}
+                    />
+                    <TextAreaField
+                      label="Admin notes"
+                      name="notes"
+                      onChange={updateNewDraft}
+                      placeholder="Seller details, pickup plan, checks, reminders..."
+                      value={newDraft.notes}
+                    />
+                    <button
+                      className="rounded-2xl bg-slate-950 px-5 py-4 text-sm font-bold text-white shadow-lg shadow-slate-300 transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:opacity-50"
+                      disabled={pendingAction === "create"}
+                    >
+                      {pendingAction === "create"
+                        ? "Adding..."
+                        : `Add ${addModes[addMode].label}`}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          ) : null}
+        </section>
+
+        {flips.length === 0 ? (
+          <div className="rounded-[2rem] border border-white/80 bg-white/90 p-10 text-center shadow-xl shadow-slate-200/70">
+            <p className="text-2xl font-semibold text-slate-950">
+              No admin cars yet.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Use Save to Admin on the Dashboard, or expand Add car above.
+            </p>
+          </div>
+        ) : (
+          groupedSections.map((group) => {
+            const isGroupExpanded = expandedGroups.has(group.key);
+
+            return (
+              <section
+                className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-xl shadow-slate-200/70"
+                key={group.key}
+              >
+                <button
+                  aria-expanded={isGroupExpanded}
+                  className="flex w-full items-center justify-between gap-4 p-5 text-left transition hover:bg-slate-50"
+                  onClick={() => toggleGroup(group.key)}
+                  type="button"
+                >
+                  <span>
+                    <span className="text-xs font-bold uppercase tracking-[0.22em] text-violet-500">
+                      Admin section
+                    </span>
+                    <span className="mt-1 block text-2xl font-semibold tracking-tight text-slate-950">
+                      {group.title}
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-slate-500">
+                      {group.description}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700">
+                      {group.flips.length}
+                    </span>
+                    <span className="rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white">
+                      {isGroupExpanded ? "Collapse" : "Expand"}
+                    </span>
+                  </span>
+                </button>
+
+                {isGroupExpanded ? (
+                  group.flips.length === 0 ? (
+                    <div className="border-t border-slate-100 p-6 text-sm font-semibold text-slate-500">
+                      No cars in {group.title.toLowerCase()} yet.
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 border-t border-slate-100 p-4">
+                      {group.flips.map((flip) => {
+                        const draft = drafts[flip.id] ?? flipToDraft(flip);
+                        const isExpanded = expandedFlipIds.has(flip.id);
+                        const panelId = `admin-flip-${flip.id}`;
+
+                        return (
+                          <article
+                            className="overflow-hidden rounded-[2rem] border border-slate-100 bg-white/95 shadow-lg shadow-slate-200/60"
+                            key={flip.id}
+                          >
+                <div className="grid gap-4 p-4 md:grid-cols-[9rem_minmax(0,1fr)] xl:grid-cols-[9rem_minmax(0,1fr)_auto_auto] xl:items-center">
+                  <PhotoPreview
+                    title={flip.vehicleTitle}
+                    value={flip.thumbnailPath}
+                  />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap gap-2">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${statusTone[flip.status]}`}
+                      >
+                        {flipStatusLabels[flip.status]}
+                      </span>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${priorityTone[flip.priority]}`}
+                      >
+                        {adminPriorityLabels[flip.priority]} priority
+                      </span>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          flip.sellerContacted
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {flip.sellerContacted ? "Contacted" : "Not contacted"}
+                      </span>
+                      {flip.listingAvailabilityStatus &&
+                      flip.listingAvailabilityStatus !== "ACTIVE" ? (
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            marketplaceAvailabilityTone[
+                              flip.listingAvailabilityStatus
+                            ] ?? "bg-slate-100 text-slate-700"
+                          }`}
+                          title={flip.listingAvailabilityReason ?? undefined}
+                        >
+                          {marketplaceAvailabilityLabel[
+                            flip.listingAvailabilityStatus
+                          ] ?? "Marketplace issue"}
+                        </span>
+                      ) : null}
+                    </div>
+                    <h3 className="mt-3 truncate text-2xl font-semibold tracking-tight text-slate-950">
+                      {flip.vehicleTitle}
+                    </h3>
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-500">
+                      <span>
+                        KMs{" "}
+                        {flip.kms
+                          ? flip.kms.toLocaleString("en-NZ")
+                          : "Unknown"}
+                      </span>
+                      <span>Rego {flip.rego ?? "Unknown"}</span>
+                      <span>Next: {flip.nextAction ?? "No next action"}</span>
+                    </div>
+                  </div>
+                  <MoneySnapshot flip={flip} />
+                  <button
+                    aria-controls={panelId}
+                    aria-expanded={isExpanded}
+                    className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-slate-200 transition hover:-translate-y-0.5 hover:bg-slate-800"
+                    onClick={() =>
+                      setExpandedFlipIds((current) =>
+                        updateSet(current, flip.id)
+                      )
+                    }
+                    type="button"
+                  >
+                    {isExpanded ? "Collapse" : "Expand"}
+                  </button>
+                </div>
+
+                {isExpanded ? (
+                  <div className="border-t border-slate-100 p-5" id={panelId}>
+                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                      <div className="grid gap-5">
+                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                            Lead
+                          </h4>
+                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            <Field
+                              label="Vehicle"
+                              name="vehicleTitle"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              required
+                              value={draft.vehicleTitle}
+                            />
+                            <SelectField
+                              label="Status"
+                              onChange={(value) =>
+                                updateDraft(flip.id, "status", value)
+                              }
+                              options={statusOptions}
+                              value={draft.status}
+                            />
+                            <Field
+                              label="Source URL"
+                              name="sourceUrl"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.sourceUrl}
+                            />
+                            <Field
+                              label="Asking $"
+                              name="askingPrice"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.askingPrice}
+                            />
+                            <Field
+                              label="Trade Me value"
+                              name="valuation"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.valuation}
+                            />
+                            <Field
+                              label="KMs"
+                              name="kms"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.kms}
+                            />
+                            <Field
+                              label="Rego"
+                              name="rego"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.rego}
+                            />
+                            <SelectField
+                              label="Priority"
+                              onChange={(value) =>
+                                updateDraft(flip.id, "priority", value)
+                              }
+                              options={priorityOptions}
+                              value={draft.priority}
+                            />
+                            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
+                              <input
+                                checked={draft.sellerContacted}
+                                className="h-4 w-4"
+                                onChange={(event) =>
+                                  updateDraft(
+                                    flip.id,
+                                    "sellerContacted",
+                                    event.target.checked
+                                  )
+                                }
+                                type="checkbox"
+                              />
+                              Contacted seller
+                            </label>
+                            <Field
+                              label="Contacted date"
+                              name="sellerContactedAt"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              type="date"
+                              value={draft.sellerContactedAt}
+                            />
+                            <Field
+                              label="Next action"
+                              name="nextAction"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.nextAction}
+                            />
+                          </div>
+                        </section>
+
+                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                            Purchase
+                          </h4>
+                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            <Field
+                              label="Purchase date"
+                              name="purchaseDate"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              type="date"
+                              value={draft.purchaseDate}
+                            />
+                            <Field
+                              label="Purchase $"
+                              name="purchasePrice"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.purchasePrice}
+                            />
+                          </div>
+                        </section>
+
+                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                            Costs
+                          </h4>
+                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            <Field
+                              label="Repair $"
+                              name="repairCost"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.repairCost}
+                            />
+                            <Field
+                              label="Other $"
+                              name="otherCost"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.otherCost}
+                            />
+                          </div>
+                        </section>
+
+                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                            Sale
+                          </h4>
+                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            <Field
+                              label="Sale date"
+                              name="saleDate"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              type="date"
+                              value={draft.saleDate}
+                            />
+                            <Field
+                              label="Sale $"
+                              name="salePrice"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              value={draft.salePrice}
+                            />
+                          </div>
+                        </section>
+
+                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+                            Journal
+                          </h4>
+                          <div className="mt-4 grid gap-4 xl:grid-cols-4">
+                            <TextAreaField
+                              label="Admin notes"
+                              name="notes"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              placeholder="Seller details, pickup plan, what needs checking..."
+                              value={draft.notes}
+                            />
+                            <TextAreaField
+                              label="What went right"
+                              name="journalWentRight"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              placeholder="Good buy reason, negotiation win, repair that paid off..."
+                              value={draft.journalWentRight}
+                            />
+                            <TextAreaField
+                              label="What went wrong"
+                              name="journalWentWrong"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              placeholder="Hidden cost, slow sale reason, inspection miss..."
+                              value={draft.journalWentWrong}
+                            />
+                            <TextAreaField
+                              label="Look out for next time"
+                              name="journalLookOutFor"
+                              onChange={(name, value) =>
+                                updateDraft(flip.id, name, value)
+                              }
+                              placeholder="Model issues, seller red flags, price ceiling lesson..."
+                              value={draft.journalLookOutFor}
+                            />
+                          </div>
+                        </section>
                       </div>
 
-                      <div className="mt-5 flex flex-wrap justify-end gap-3">
-                        <button
-                          className="rounded-2xl border border-rose-200 bg-white px-5 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={pendingAction === `delete-${flip.id}`}
-                          onClick={() => deleteFlip(flip.id, flip.vehicleTitle)}
-                          type="button"
-                        >
-                          {pendingAction === `delete-${flip.id}`
-                            ? "Removing..."
-                            : "Remove"}
-                        </button>
-                        <button
-                          className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-slate-300 transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={pendingAction === `save-${flip.id}`}
-                          onClick={() => saveFlip(flip.id)}
-                          type="button"
-                        >
-                          {pendingAction === `save-${flip.id}`
-                            ? "Saving..."
-                            : "Save changes"}
-                        </button>
+                      <div className="grid content-start gap-4">
+                        <PhotoField
+                          onChange={(value) =>
+                            updateDraft(flip.id, "thumbnailPath", value)
+                          }
+                          title={draft.vehicleTitle || flip.vehicleTitle}
+                          value={draft.thumbnailPath}
+                        />
+                        <div className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+                          <p className="text-sm text-slate-500">
+                            Updated {updatedLabel(flip.updatedAt)}
+                          </p>
+                          {flip.listingAvailabilityStatus &&
+                          flip.listingAvailabilityStatus !== "ACTIVE" ? (
+                            <p className="mt-2 text-sm text-slate-500">
+                              Marketplace status:{" "}
+                              <strong>
+                                {marketplaceAvailabilityLabel[
+                                  flip.listingAvailabilityStatus
+                                ] ?? flip.listingAvailabilityStatus}
+                              </strong>
+                            </p>
+                          ) : null}
+                          {flip.sourceUrl ? (
+                            <a
+                              className="mt-3 inline-flex rounded-2xl bg-cyan-100 px-4 py-3 text-sm font-bold text-cyan-800 transition hover:bg-cyan-200"
+                              href={flip.sourceUrl}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              Open source listing
+                            </a>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          {deleteConfirmId === flip.id ? (
+                            <>
+                              <button
+                                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                                onClick={() => setDeleteConfirmId(null)}
+                                type="button"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-rose-200 transition hover:-translate-y-0.5 hover:bg-rose-700 disabled:opacity-50"
+                                disabled={pendingAction === `delete-${flip.id}`}
+                                onClick={() => deleteFlip(flip.id)}
+                                type="button"
+                              >
+                                {pendingAction === `delete-${flip.id}`
+                                  ? "Removing..."
+                                  : "Confirm remove"}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="rounded-2xl border border-rose-200 bg-white px-5 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-50"
+                              onClick={() => setDeleteConfirmId(flip.id)}
+                              type="button"
+                            >
+                              Remove
+                            </button>
+                          )}
+                          <button
+                            className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-slate-300 transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:opacity-50"
+                            disabled={pendingAction === `save-${flip.id}`}
+                            onClick={() => saveFlip(flip.id)}
+                            type="button"
+                          >
+                            {pendingAction === `save-${flip.id}`
+                              ? "Saving..."
+                              : "Save changes"}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </article>
-                );
-              })
-            )}
-          </div>
-        </section>
+                  </div>
+                ) : null}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : null}
+              </section>
+            );
+          })
+        )}
+      </section>
     </>
   );
 }

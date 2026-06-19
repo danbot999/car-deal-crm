@@ -16,10 +16,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const filters = {
     q: firstParam(params.q),
-    status: firstParam(params.status),
-    minPrice: firstParam(params.minPrice),
-    maxPrice: firstParam(params.maxPrice),
-    valuation: firstParam(params.valuation)
+    origin: firstParam(params.origin)
   };
   const data = await getDashboardData(filters);
 

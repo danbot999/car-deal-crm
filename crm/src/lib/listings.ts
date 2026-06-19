@@ -2,13 +2,16 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { calculateDealMetrics } from "@/lib/money";
+import {
+  germanVehicleBrands,
+  isVehicleOrigin,
+  japaneseVehicleBrands
+} from "@/lib/vehicle-origin";
+import type { VehicleOrigin } from "@/lib/vehicle-origin";
 
 export type ListingFilters = {
   q?: string;
-  status?: string;
-  minPrice?: string;
-  maxPrice?: string;
-  valuation?: string;
+  origin?: string;
 };
 
 export const listingStatuses = [
@@ -25,28 +28,101 @@ export const listingStatuses = [
 
 export type ListingStatus = (typeof listingStatuses)[number];
 
+export const availabilityStatuses = [
+  "ACTIVE",
+  "NEEDS_REVIEW",
+  "POSSIBLY_SOLD",
+  "CONFIRMED_SOLD",
+  "SOLD",
+  "UNAVAILABLE",
+  "EXPIRED",
+  "UNKNOWN"
+] as const;
+
+export type AvailabilityStatus = (typeof availabilityStatuses)[number];
+
+export const hiddenAvailabilityStatuses: AvailabilityStatus[] = [
+  "CONFIRMED_SOLD",
+  "SOLD",
+  "UNAVAILABLE",
+  "EXPIRED"
+];
+
+export const dashboardVisibleAvailabilityStatuses: AvailabilityStatus[] = [
+  "ACTIVE",
+  "NEEDS_REVIEW",
+  "POSSIBLY_SOLD",
+  "UNKNOWN"
+];
+
+export const availabilityLabels: Record<AvailabilityStatus, string> = {
+  ACTIVE: "Active",
+  NEEDS_REVIEW: "Needs review",
+  POSSIBLY_SOLD: "Needs confirmation",
+  CONFIRMED_SOLD: "Confirmed sold",
+  SOLD: "Sold",
+  UNAVAILABLE: "Unavailable",
+  EXPIRED: "Expired",
+  UNKNOWN: "Checking"
+};
+
 export function isListingStatus(value: string): value is ListingStatus {
   return listingStatuses.includes(value as ListingStatus);
 }
 
-function parseDollarsToCents(value?: string): number | undefined {
-  if (!value) {
-    return undefined;
+export function isAvailabilityStatus(value: string): value is AvailabilityStatus {
+  return availabilityStatuses.includes(value as AvailabilityStatus);
+}
+
+function brandSearchFilter(
+  brands: readonly string[]
+): Prisma.ListingWhereInput {
+  return {
+    OR: brands.flatMap((brand) => [
+      { make: { contains: brand } },
+      { model: { contains: brand } },
+      { title: { contains: brand } }
+    ])
+  };
+}
+
+function originFilter(origin?: string): Prisma.ListingWhereInput | null {
+  if (!origin || origin === "all" || !isVehicleOrigin(origin)) {
+    return null;
   }
 
-  const dollars = Number(value.replace(/[$,\s]/g, ""));
-  if (!Number.isFinite(dollars) || dollars < 0) {
-    return undefined;
+  const germanFilter = brandSearchFilter(germanVehicleBrands);
+  const japaneseFilter = brandSearchFilter(japaneseVehicleBrands);
+
+  if (origin === "german") {
+    return germanFilter;
   }
 
-  return Math.round(dollars * 100);
+  if (origin === "japanese") {
+    return japaneseFilter;
+  }
+
+  return {
+    NOT: {
+      OR: [
+        ...(germanFilter.OR ?? []),
+        ...(japaneseFilter.OR ?? [])
+      ] as Prisma.ListingWhereInput[]
+    }
+  };
 }
 
 export async function getDashboardData(filters: ListingFilters) {
-  const where: Prisma.ListingWhereInput = {};
+  const where: Prisma.ListingWhereInput = {
+    availabilityStatus: { in: dashboardVisibleAvailabilityStatuses }
+  };
+  const activeWhere: Prisma.ListingWhereInput = {
+    availabilityStatus: { in: dashboardVisibleAvailabilityStatuses }
+  };
   const query = filters.q?.trim();
-  const minPriceCents = parseDollarsToCents(filters.minPrice);
-  const maxPriceCents = parseDollarsToCents(filters.maxPrice);
+  const selectedOrigin: VehicleOrigin =
+    filters.origin && isVehicleOrigin(filters.origin) ? filters.origin : "all";
+  const selectedOriginFilter = originFilter(selectedOrigin);
 
   if (query) {
     where.OR = [
@@ -57,36 +133,32 @@ export async function getDashboardData(filters: ListingFilters) {
     ];
   }
 
-  if (
-    filters.status &&
-    listingStatuses.includes(filters.status as ListingStatus)
-  ) {
-    where.status = filters.status;
+  if (selectedOriginFilter) {
+    where.AND = [selectedOriginFilter];
   }
 
-  if (minPriceCents != null || maxPriceCents != null) {
-    where.askingPriceCents = {
-      gte: minPriceCents,
-      lte: maxPriceCents
-    };
-  }
-
-  if (filters.valuation === "missing") {
-    where.valuationCents = null;
-  }
-
-  if (filters.valuation === "valued") {
-    where.valuationCents = { not: null };
-  }
-
-  const [listings, total, newCount, awaitingValuation] = await Promise.all([
+  const [
+    listings,
+    total,
+    activeTotal,
+    hiddenInactive,
+    newCount,
+    awaitingValuation,
+  ] = await Promise.all([
     prisma.listing.findMany({
       where,
+      include: {
+        adminFlip: true
+      },
       orderBy: [{ firstSeenAt: "desc" }, { createdAt: "desc" }]
     }),
     prisma.listing.count(),
-    prisma.listing.count({ where: { status: "NEW" } }),
-    prisma.listing.count({ where: { valuationCents: null } })
+    prisma.listing.count({ where: activeWhere }),
+    prisma.listing.count({
+      where: { availabilityStatus: { in: hiddenAvailabilityStatuses } }
+    }),
+    prisma.listing.count({ where: { ...activeWhere, status: "NEW" } }),
+    prisma.listing.count({ where: { ...activeWhere, valuationCents: null } })
   ]);
 
   const visibleListings = listings.map((listing) => {
@@ -98,6 +170,9 @@ export async function getDashboardData(filters: ListingFilters) {
     return {
       ...listing,
       status: isListingStatus(listing.status) ? listing.status : "NEW",
+      availabilityStatus: isAvailabilityStatus(listing.availabilityStatus)
+        ? listing.availabilityStatus
+        : "ACTIVE",
       displayTargetSellPriceCents:
         listing.targetSellPriceCents ?? metrics.targetSellPriceCents,
       displayMaxBuyPriceCents:
@@ -109,6 +184,7 @@ export async function getDashboardData(filters: ListingFilters) {
 
   const potentialLeads = await prisma.listing.count({
     where: {
+      ...activeWhere,
       estimatedProfitCents: {
         gt: 0
       }
@@ -119,7 +195,9 @@ export async function getDashboardData(filters: ListingFilters) {
     listings: visibleListings,
     stats: {
       total,
+      activeTotal,
       visible: listings.length,
+      hiddenInactive,
       newCount,
       awaitingValuation,
       potentialLeads

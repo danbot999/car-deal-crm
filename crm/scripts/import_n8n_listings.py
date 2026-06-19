@@ -29,6 +29,8 @@ from scraper import MODERN_USER_AGENT  # noqa: E402
 CRM_DB = CRM_ROOT / "prisma" / "dev.db"
 N8N_DB = Path.home() / ".n8n" / "database.sqlite"
 IMAGE_DIR = CRM_ROOT / "public" / "listing-images"
+SQLITE_TIMEOUT_SECONDS = 30
+SQLITE_BUSY_TIMEOUT_MS = 30_000
 PAGE_TITLE_SUFFIX_PATTERN = re.compile(
     r"(?i)\s*\|\s*Facebook Marketplace\s*\|\s*Facebook\s*$"
 )
@@ -44,10 +46,26 @@ MAKE_PATTERN = re.compile(
     r")\b"
 )
 YEAR_PATTERN = re.compile(r"\b(19[7-9]\d|20[0-3]\d)\b")
+AVAILABILITY_STATUSES = {
+    "ACTIVE",
+    "NEEDS_REVIEW",
+    "POSSIBLY_SOLD",
+    "CONFIRMED_SOLD",
+    "UNAVAILABLE",
+    "EXPIRED",
+    "UNKNOWN",
+}
+AVAILABILITY_CONFIDENCES = {"HIGH", "MEDIUM", "LOW"}
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def connect_crm_db() -> sqlite3.Connection:
+    connection = sqlite3.connect(CRM_DB, timeout=SQLITE_TIMEOUT_SECONDS)
+    connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    return connection
 
 
 def console_text(value: str) -> str:
@@ -69,6 +87,24 @@ def sqlite_timestamp(value: str | None) -> str:
 
 def cents_from_price(value: Any) -> int:
     return int(round(float(value) * 100))
+
+
+def optional_sqlite_timestamp(value: str | None) -> str | None:
+    if not value:
+        return None
+    return sqlite_timestamp(value)
+
+
+def normalize_availability_status(value: Any) -> str | None:
+    status = str(value or "").strip().upper()
+    if status == "SOLD":
+        return "CONFIRMED_SOLD"
+    return status if status in AVAILABILITY_STATUSES else None
+
+
+def normalize_availability_confidence(value: Any) -> str:
+    confidence = str(value or "").strip().upper()
+    return confidence if confidence in AVAILABILITY_CONFIDENCES else "LOW"
 
 
 def facebook_item_id(url: str) -> str | None:
@@ -123,22 +159,43 @@ def get_n8n_rows() -> list[dict[str, Any]]:
             return []
 
         table_name = f"data_table_user_{table_row['id']}"
+        available_columns = [
+            row["name"] for row in connection.execute(f'PRAGMA table_info("{table_name}")')
+        ]
+        requested_columns = [
+            "title",
+            "price",
+            "url",
+            "firstSeen",
+            "category",
+            "availabilityStatus",
+            "availabilityConfidence",
+            "filterReason",
+            "lastSeen",
+            "sourceSearchUrl",
+        ]
+        selected_columns = [
+            column for column in requested_columns if column in available_columns
+        ]
+        if not {"title", "price", "url", "firstSeen"}.issubset(selected_columns):
+            return []
         return [
             dict(row)
             for row in connection.execute(
-                f'SELECT title, price, url, firstSeen FROM "{table_name}" ORDER BY id'
+                f'SELECT {", ".join(selected_columns)} FROM "{table_name}" ORDER BY id'
             )
         ]
 
 
 def get_crm_state() -> dict[str, dict[str, Any]]:
-    with sqlite3.connect(CRM_DB) as connection:
+    with connect_crm_db() as connection:
         connection.row_factory = sqlite3.Row
         return {
             row["facebookUrl"]: dict(row)
             for row in connection.execute(
                 """
                 SELECT facebookUrl, thumbnailPath, remoteImageUrl, title
+                , availabilityStatus, availabilityConfidence, availabilityReason
                 FROM Listing
                 """
             )
@@ -146,7 +203,7 @@ def get_crm_state() -> dict[str, dict[str, Any]]:
 
 
 def get_crm_stats() -> dict[str, int]:
-    with sqlite3.connect(CRM_DB) as connection:
+    with connect_crm_db() as connection:
         count = connection.execute("SELECT COUNT(*) FROM Listing").fetchone()[0]
         with_images = connection.execute(
             "SELECT COUNT(*) FROM Listing WHERE thumbnailPath IS NOT NULL"
@@ -239,6 +296,17 @@ def cache_thumbnail(item_id: str, image_url: str | None) -> tuple[str | None, st
 
 
 def upsert_listing(connection: sqlite3.Connection, row: dict[str, Any]) -> None:
+    availability_status = normalize_availability_status(
+        row.get("availabilityStatus")
+    ) or "ACTIVE"
+    availability_confidence = normalize_availability_confidence(
+        row.get("availabilityConfidence")
+    )
+    availability_reason = str(row.get("availabilityReason") or "").strip() or None
+    last_seen_at = optional_sqlite_timestamp(row.get("lastSeen"))
+    consecutive_unavailable_checks = 1 if availability_status == "POSSIBLY_SOLD" else 0
+    unavailable_since = row.get("lastSeen") if availability_status == "POSSIBLY_SOLD" else None
+
     connection.execute(
         """
         INSERT INTO Listing (
@@ -257,11 +325,19 @@ def upsert_listing(connection: sqlite3.Connection, row: dict[str, Any]) -> None:
             extractedYear,
             make,
             model,
+            availabilityStatus,
+            availabilityConfidence,
+            availabilityReason,
+            lastVerifiedAt,
+            lastSeenAt,
+            consecutiveUnavailableChecks,
+            unavailableCheckCount,
+            unavailableSince,
             firstSeenAt,
             createdAt,
             updatedAt
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'FACEBOOK_MARKETPLACE', ?, ?, ?, 'NEW', 'UNKNOWN', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, 'FACEBOOK_MARKETPLACE', ?, ?, ?, 'NEW', 'UNKNOWN', ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT(facebookUrl) DO UPDATE SET
             title = excluded.title,
             askingPriceCents = excluded.askingPriceCents,
@@ -272,6 +348,30 @@ def upsert_listing(connection: sqlite3.Connection, row: dict[str, Any]) -> None:
             extractedYear = COALESCE(excluded.extractedYear, Listing.extractedYear),
             make = COALESCE(excluded.make, Listing.make),
             model = COALESCE(excluded.model, Listing.model),
+            availabilityStatus = excluded.availabilityStatus,
+            availabilityConfidence = excluded.availabilityConfidence,
+            availabilityReason = COALESCE(excluded.availabilityReason, Listing.availabilityReason),
+            lastVerifiedAt = COALESCE(excluded.lastVerifiedAt, Listing.lastVerifiedAt),
+            lastSeenAt = CASE
+                WHEN excluded.availabilityStatus = 'ACTIVE' THEN COALESCE(excluded.lastSeenAt, CURRENT_TIMESTAMP)
+                WHEN excluded.lastSeenAt IS NOT NULL THEN excluded.lastSeenAt
+                ELSE Listing.lastSeenAt
+            END,
+            unavailableSince = CASE
+                WHEN excluded.availabilityStatus = 'ACTIVE' THEN NULL
+                WHEN excluded.availabilityStatus = 'POSSIBLY_SOLD' THEN COALESCE(Listing.unavailableSince, excluded.unavailableSince)
+                ELSE Listing.unavailableSince
+            END,
+            consecutiveUnavailableChecks = CASE
+                WHEN excluded.availabilityStatus = 'ACTIVE' THEN 0
+                WHEN excluded.availabilityStatus = 'POSSIBLY_SOLD' THEN MAX(Listing.consecutiveUnavailableChecks, 1)
+                ELSE Listing.consecutiveUnavailableChecks
+            END,
+            unavailableCheckCount = CASE
+                WHEN excluded.availabilityStatus = 'ACTIVE' THEN 0
+                WHEN excluded.availabilityStatus = 'POSSIBLY_SOLD' THEN MAX(Listing.unavailableCheckCount, 1)
+                ELSE Listing.unavailableCheckCount
+            END,
             firstSeenAt = MIN(Listing.firstSeenAt, excluded.firstSeenAt),
             updatedAt = CURRENT_TIMESTAMP
         """,
@@ -288,9 +388,98 @@ def upsert_listing(connection: sqlite3.Connection, row: dict[str, Any]) -> None:
             row["extractedYear"],
             row["make"],
             row["model"],
+            availability_status,
+            availability_confidence,
+            availability_reason,
+            last_seen_at,
+            last_seen_at,
+            consecutive_unavailable_checks,
+            consecutive_unavailable_checks,
+            optional_sqlite_timestamp(unavailable_since),
             row["firstSeenAt"],
         ),
     )
+
+
+def sync_existing_listing_metadata(
+    connection: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+) -> int:
+    """Update lightweight n8n status metadata for rows already in the CRM."""
+    updated = 0
+    for row in rows:
+        url = str(row.get("url") or "").strip()
+        if not url:
+            continue
+
+        availability_status = normalize_availability_status(
+            row.get("availabilityStatus")
+        )
+        if availability_status is None:
+            continue
+
+        availability_confidence = normalize_availability_confidence(
+            row.get("availabilityConfidence")
+        )
+        availability_reason = str(row.get("filterReason") or "").strip() or None
+        last_seen_at = optional_sqlite_timestamp(row.get("lastSeen"))
+        unavailable_since = (
+            last_seen_at if availability_status == "POSSIBLY_SOLD" else None
+        )
+
+        cursor = connection.execute(
+            """
+            UPDATE Listing
+            SET
+              availabilityStatus = ?,
+              availabilityConfidence = ?,
+              availabilityReason = COALESCE(?, availabilityReason),
+              lastVerifiedAt = COALESCE(?, lastVerifiedAt),
+              lastSeenAt = CASE
+                WHEN ? = 'ACTIVE' THEN COALESCE(?, CURRENT_TIMESTAMP)
+                WHEN ? IS NOT NULL THEN ?
+                ELSE lastSeenAt
+              END,
+              unavailableSince = CASE
+                WHEN ? = 'ACTIVE' THEN NULL
+                WHEN ? = 'POSSIBLY_SOLD' THEN COALESCE(unavailableSince, ?)
+                ELSE unavailableSince
+              END,
+              consecutiveUnavailableChecks = CASE
+                WHEN ? = 'ACTIVE' THEN 0
+                WHEN ? = 'POSSIBLY_SOLD' THEN MAX(consecutiveUnavailableChecks, 1)
+                ELSE consecutiveUnavailableChecks
+              END,
+              unavailableCheckCount = CASE
+                WHEN ? = 'ACTIVE' THEN 0
+                WHEN ? = 'POSSIBLY_SOLD' THEN MAX(unavailableCheckCount, 1)
+                ELSE unavailableCheckCount
+              END,
+              updatedAt = CURRENT_TIMESTAMP
+            WHERE facebookUrl = ?
+            """,
+            (
+                availability_status,
+                availability_confidence,
+                availability_reason,
+                last_seen_at,
+                availability_status,
+                last_seen_at,
+                last_seen_at,
+                last_seen_at,
+                availability_status,
+                availability_status,
+                unavailable_since,
+                availability_status,
+                availability_status,
+                availability_status,
+                availability_status,
+                url,
+            ),
+        )
+        updated += cursor.rowcount
+
+    return updated
 
 
 async def import_rows(
@@ -314,11 +503,15 @@ async def import_rows(
     ]
 
     if not rows_to_process:
+        with connect_crm_db() as connection:
+            metadata_updated = sync_existing_listing_metadata(connection, rows)
+            connection.commit()
         stats = get_crm_stats()
         return {
             "read": len(rows),
             "processed": 0,
             "skipped_existing": len(rows),
+            "metadata_updated": metadata_updated,
             **stats,
         }
 
@@ -349,6 +542,10 @@ async def import_rows(
                     "title": title,
                     "askingPriceCents": cents_from_price(row["price"]),
                     "category": detail.get("category"),
+                    "availabilityStatus": row.get("availabilityStatus"),
+                    "availabilityConfidence": row.get("availabilityConfidence"),
+                    "availabilityReason": row.get("filterReason"),
+                    "lastSeen": row.get("lastSeen"),
                     "thumbnailPath": thumbnail_path,
                     "remoteImageUrl": remote_image_url,
                     "imageCachedAt": now_iso() if thumbnail_path else None,
@@ -367,15 +564,17 @@ async def import_rows(
         await context.close()
         await browser.close()
 
-    with sqlite3.connect(CRM_DB) as connection:
+    with connect_crm_db() as connection:
         for row in prepared:
             upsert_listing(connection, row)
+        metadata_updated = sync_existing_listing_metadata(connection, rows)
         connection.commit()
     stats = get_crm_stats()
     return {
         "read": len(rows),
         "processed": len(prepared),
         "skipped_existing": len(rows) - len(prepared),
+        "metadata_updated": metadata_updated,
         **stats,
     }
 

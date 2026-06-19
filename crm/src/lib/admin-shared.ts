@@ -18,6 +18,16 @@ export const flipStatusLabels: Record<FlipStatus, string> = {
   PASSED: "Passed"
 };
 
+export const adminPriorities = ["LOW", "MEDIUM", "HIGH"] as const;
+
+export type AdminPriority = (typeof adminPriorities)[number];
+
+export const adminPriorityLabels: Record<AdminPriority, string> = {
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High"
+};
+
 export type AdminStats = {
   carsTracked: number;
   carsBought: number;

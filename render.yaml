@@ -12,10 +12,19 @@ services:
       - key: NODE_VERSION
         value: 24
       - key: DATABASE_URL
-        value: file:./prisma/render.db
+        value: file:/var/data/render.db
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
         value: gpt-4o-mini
       - key: OPENAI_RESEARCH_MODEL
         value: gpt-4o-mini
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+
+    # Free Render web services use an ephemeral filesystem. For durable CRM data,
+    # switch plan to starter or above and uncomment this disk.
+    # disk:
+    #   name: crm-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

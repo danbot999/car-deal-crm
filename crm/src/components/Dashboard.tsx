@@ -1,7 +1,20 @@
 import { AppNav } from "@/components/AppNav";
+import { SaveToAdminButton } from "@/components/SaveToAdminButton";
+import { SafeCarImage } from "@/components/SafeCarImage";
 import { ValuationButton } from "@/components/ValuationButton";
-import { ListingStatus, statusLabels } from "@/lib/listings";
+import {
+  availabilityLabels,
+  ListingStatus,
+  statusLabels
+} from "@/lib/listings";
+import type { AvailabilityStatus } from "@/lib/listings";
 import { formatMoney } from "@/lib/money";
+import {
+  isVehicleOrigin,
+  vehicleOriginLabels,
+  vehicleOrigins
+} from "@/lib/vehicle-origin";
+import type { VehicleOrigin } from "@/lib/vehicle-origin";
 
 type DashboardListing = {
   id: string;
@@ -10,6 +23,14 @@ type DashboardListing = {
   askingPriceCents: number;
   thumbnailPath: string | null;
   status: ListingStatus;
+  availabilityStatus: AvailabilityStatus;
+  availabilityConfidence: string;
+  availabilityReason: string | null;
+  lastVerifiedAt: Date | null;
+  lastCheckedAt: Date | null;
+  unavailableSince: Date | null;
+  consecutiveUnavailableChecks: number;
+  unavailableCheckCount: number;
   firstSeenAt: Date;
   numberPlate: string | null;
   numberPlateConfidence: number | null;
@@ -35,13 +56,39 @@ type DashboardListing = {
   sellerQuestions: string | null;
   riskFlags: string | null;
   recommendedAction: string | null;
+  adminFlip: {
+    id: string;
+    vehicleTitle: string;
+    status: string;
+    sourceUrl: string | null;
+    askingPriceCents: number | null;
+    thumbnailPath: string | null;
+    kms: number | null;
+    rego: string | null;
+    sellerContacted: boolean;
+    sellerContactedAt: Date | null;
+    priority: string;
+    nextAction: string | null;
+    purchaseDate: Date | null;
+    saleDate: Date | null;
+    purchasePriceCents: number;
+    repairCostCents: number;
+    otherCostCents: number;
+    salePriceCents: number | null;
+    notes: string | null;
+    journalWentRight: string | null;
+    journalWentWrong: string | null;
+    journalLookOutFor: string | null;
+  } | null;
 };
 
 type DashboardProps = {
   listings: DashboardListing[];
   stats: {
     total: number;
+    activeTotal: number;
     visible: number;
+    hiddenInactive: number;
     newCount: number;
     awaitingValuation: number;
     potentialLeads: number;
@@ -99,6 +146,17 @@ const aiStatusLabels: Record<string, string> = {
   RUNNING: "Running",
   COMPLETED: "Evaluated",
   FAILED: "Failed"
+};
+
+const availabilityTone: Record<AvailabilityStatus, string> = {
+  ACTIVE: "bg-emerald-100 text-emerald-800",
+  NEEDS_REVIEW: "bg-amber-100 text-amber-800",
+  POSSIBLY_SOLD: "bg-orange-100 text-orange-800",
+  CONFIRMED_SOLD: "bg-rose-100 text-rose-800",
+  SOLD: "bg-rose-100 text-rose-800",
+  UNAVAILABLE: "bg-orange-100 text-orange-800",
+  EXPIRED: "bg-slate-200 text-slate-700",
+  UNKNOWN: "bg-amber-100 text-amber-800"
 };
 
 function StatCard({
@@ -213,6 +271,12 @@ function ListingCard({ listing }: { listing: DashboardListing }) {
             <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-semibold text-cyan-800">
               Facebook
             </span>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-bold ${availabilityTone[listing.availabilityStatus]}`}
+              title={listing.availabilityReason ?? undefined}
+            >
+              {availabilityLabels[listing.availabilityStatus]}
+            </span>
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
               {statusLabels[listing.status]}
             </span>
@@ -231,20 +295,32 @@ function ListingCard({ listing }: { listing: DashboardListing }) {
           >
             Open Marketplace listing
           </a>
+          {listing.availabilityStatus !== "ACTIVE" ? (
+            <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+              {listing.availabilityStatus === "POSSIBLY_SOLD"
+                ? "Needs confirmation"
+                : listing.availabilityStatus === "NEEDS_REVIEW"
+                  ? "Needs review"
+                  : "Availability note"}
+              :{" "}
+              {listing.availabilityReason ??
+                "Marketplace listing is no longer verified active."}
+              {listing.availabilityConfidence ? (
+                <span className="ml-1 font-medium">
+                  ({listing.availabilityConfidence.toLowerCase()} confidence)
+                </span>
+              ) : null}
+            </p>
+          ) : null}
         </div>
 
           <div className="flex md:justify-end">
-            {listing.thumbnailPath ? (
-              <img
-                alt={listing.title}
-                className="h-64 w-full rounded-[1.8rem] object-cover shadow-xl shadow-slate-200/80 ring-1 ring-slate-200 md:h-72 md:w-96 lg:h-80 lg:w-[27rem]"
-                src={listing.thumbnailPath}
-              />
-            ) : (
-              <div className="flex h-64 w-full items-center justify-center rounded-[1.8rem] bg-slate-100 text-xs font-semibold text-slate-400 ring-1 ring-slate-200 md:h-72 md:w-96 lg:h-80 lg:w-[27rem]">
-                No photo
-              </div>
-            )}
+            <SafeCarImage
+              alt={listing.title}
+              className="h-64 w-full rounded-[1.8rem] object-cover shadow-xl shadow-slate-200/80 ring-1 ring-slate-200 md:h-72 md:w-96 lg:h-80 lg:w-[27rem]"
+              fallbackClassName="flex h-64 w-full items-center justify-center rounded-[1.8rem] bg-slate-100 text-xs font-semibold text-slate-400 ring-1 ring-slate-200 md:h-72 md:w-96 lg:h-80 lg:w-[27rem]"
+              src={listing.thumbnailPath}
+            />
           </div>
         </div>
 
@@ -291,12 +367,27 @@ function ListingCard({ listing }: { listing: DashboardListing }) {
           valuationError={listing.valuationError}
           valuationStatus={listing.valuationStatus}
         />
+
+        <SaveToAdminButton
+          adminFlip={listing.adminFlip}
+          askingPriceCents={listing.askingPriceCents}
+          facebookUrl={listing.facebookUrl}
+          listingId={listing.id}
+          thumbnailPath={listing.thumbnailPath}
+          title={listing.title}
+        />
       </div>
     </article>
   );
 }
 
 export function Dashboard({ filters, listings, stats }: DashboardProps) {
+  const selectedOrigin: VehicleOrigin =
+    filters.origin && isVehicleOrigin(filters.origin) ? filters.origin : "all";
+  const hasActiveFilters =
+    (Boolean(filters.q?.trim()) && filters.q?.trim() !== "") ||
+    selectedOrigin !== "all";
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbeafe,_transparent_32rem),linear-gradient(180deg,_#f8fafc,_#eef2ff)] px-4 py-8 text-slate-950 md:px-6">
       <main className="mx-auto max-w-[95rem]">
@@ -336,57 +427,56 @@ export function Dashboard({ filters, listings, stats }: DashboardProps) {
           </div>
         </section>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-5">
+        <section className="mt-8 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           <StatCard label="Total listings" value={stats.total} hint="Imported into the CRM" />
+          <StatCard label="Active/checking" value={stats.activeTotal} hint="Shown by default" />
           <StatCard label="Visible now" value={stats.visible} hint="Matching current filters" />
-          <StatCard label="New" value={stats.newCount} hint="Not reviewed yet" />
+          <StatCard label="Hidden inactive" value={stats.hiddenInactive} hint="Sold, unavailable, or expired" />
           <StatCard label="Awaiting valuation" value={stats.awaitingValuation} hint="Ready for review" />
           <StatCard label="Potential leads" value={stats.potentialLeads} hint="Appears once valuation exists" />
         </section>
 
-        <form className="mt-8 grid gap-3 rounded-3xl border border-slate-200 bg-white/85 p-4 shadow-sm shadow-slate-200/70 md:grid-cols-[1.5fr_0.8fr_0.7fr_0.7fr_0.9fr_auto]">
-          <input
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-cyan-200 transition focus:ring-4"
-            name="q"
-            placeholder="Search title, make, model, or URL"
-            defaultValue={filters.q ?? ""}
-          />
-          <select
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-cyan-200 transition focus:ring-4"
-            name="status"
-            defaultValue={filters.status ?? ""}
-          >
-            <option value="">All statuses</option>
-            {Object.entries(statusLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <input
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-cyan-200 transition focus:ring-4"
-            name="minPrice"
-            placeholder="Min $"
-            defaultValue={filters.minPrice ?? ""}
-          />
-          <input
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-cyan-200 transition focus:ring-4"
-            name="maxPrice"
-            placeholder="Max $"
-            defaultValue={filters.maxPrice ?? ""}
-          />
-          <select
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-cyan-200 transition focus:ring-4"
-            name="valuation"
-            defaultValue={filters.valuation ?? ""}
-          >
-            <option value="">Any valuation</option>
-            <option value="missing">Awaiting valuation</option>
-            <option value="valued">Valued only</option>
-          </select>
-          <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-300 transition hover:-translate-y-0.5 hover:bg-slate-800">
-            Filter
-          </button>
+        <form className="mt-8 rounded-[2rem] border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-200/70">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_17rem_auto_auto] lg:items-end">
+            <label className="block">
+              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                Search
+              </span>
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-cyan-200 transition focus:ring-4"
+                name="q"
+                placeholder="Search title, make, model ..."
+                defaultValue={filters.q ?? ""}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                Select Country
+              </span>
+              <select
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none ring-cyan-200 transition focus:ring-4"
+                name="origin"
+                defaultValue={selectedOrigin}
+              >
+                {vehicleOrigins.map((origin) => (
+                  <option key={origin} value={origin}>
+                    {vehicleOriginLabels[origin]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="rounded-2xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-300 transition hover:-translate-y-0.5 hover:bg-slate-800">
+              Filter
+            </button>
+            {hasActiveFilters ? (
+              <a
+                className="rounded-2xl border border-slate-200 px-6 py-3 text-center text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-50"
+                href="/dashboard"
+              >
+                Clear
+              </a>
+            ) : null}
+          </div>
         </form>
 
         <section className="mt-8">

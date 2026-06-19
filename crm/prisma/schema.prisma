@@ -54,24 +54,50 @@ model Listing {
   researchModel        String?
   researchStatus       String        @default("NOT_STARTED")
   researchError        String?
+  availabilityStatus   String        @default("ACTIVE")
+  availabilityConfidence String      @default("HIGH")
+  availabilityReason   String?
+  lastVerifiedAt       DateTime?
+  lastSeenAt           DateTime?
+  lastCheckedAt        DateTime?
+  unavailableSince     DateTime?
+  consecutiveUnavailableChecks Int   @default(0)
+  unavailableCheckCount Int          @default(0)
   firstSeenAt          DateTime
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
+  adminFlip            AdminFlip?
 
   @@index([firstSeenAt])
   @@index([status])
   @@index([askingPriceCents])
   @@index([leadSavedAt])
   @@index([researchStatus])
+  @@index([availabilityStatus])
+  @@index([lastCheckedAt])
 }
 
 model AdminFlip {
   id                  String   @id @default(cuid())
+  listingId           String?  @unique
   vehicleTitle        String
   status              String   @default("WATCHING")
   sourceUrl           String?
+  askingPriceCents    Int?
+  thumbnailPath       String?
+  kms                 Int?
+  rego                String?
+  sellerContacted     Boolean  @default(false)
+  sellerContactedAt   DateTime?
+  priority            String   @default("MEDIUM")
+  nextAction          String?
   purchaseDate        DateTime?
   saleDate            DateTime?
+  valuationCents      Int?
+  targetSellPriceCents Int?
+  maxBuyPriceCents    Int?
+  estimatedProfitCents Int?
+  valuationCheckedAt  DateTime?
   purchasePriceCents  Int      @default(0)
   repairCostCents     Int      @default(0)
   otherCostCents      Int      @default(0)
@@ -82,8 +108,11 @@ model AdminFlip {
   journalLookOutFor   String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+  listing             Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
   @@index([status])
+  @@index([priority])
+  @@index([sellerContacted])
   @@index([purchaseDate])
   @@index([saleDate])
 }

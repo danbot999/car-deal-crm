@@ -40,6 +40,35 @@ LEAD_REPORT_COLUMNS = {
     "researchError": "TEXT",
 }
 
+AVAILABILITY_COLUMNS = {
+    "availabilityStatus": "TEXT NOT NULL DEFAULT 'ACTIVE'",
+    "availabilityConfidence": "TEXT NOT NULL DEFAULT 'HIGH'",
+    "availabilityReason": "TEXT",
+    "lastVerifiedAt": "DATETIME",
+    "lastSeenAt": "DATETIME",
+    "lastCheckedAt": "DATETIME",
+    "unavailableSince": "DATETIME",
+    "consecutiveUnavailableChecks": "INTEGER NOT NULL DEFAULT 0",
+    "unavailableCheckCount": "INTEGER NOT NULL DEFAULT 0",
+}
+
+ADMIN_FLIP_COLUMNS = {
+    "listingId": "TEXT",
+    "askingPriceCents": "INTEGER",
+    "thumbnailPath": "TEXT",
+    "kms": "INTEGER",
+    "rego": "TEXT",
+    "sellerContacted": "BOOLEAN NOT NULL DEFAULT false",
+    "sellerContactedAt": "DATETIME",
+    "priority": "TEXT NOT NULL DEFAULT 'MEDIUM'",
+    "nextAction": "TEXT",
+    "valuationCents": "INTEGER",
+    "targetSellPriceCents": "INTEGER",
+    "maxBuyPriceCents": "INTEGER",
+    "estimatedProfitCents": "INTEGER",
+    "valuationCheckedAt": "DATETIME",
+}
+
 
 def ensure_columns(connection: sqlite3.Connection) -> None:
     existing_columns = {
@@ -49,11 +78,28 @@ def ensure_columns(connection: sqlite3.Connection) -> None:
         **TRADE_ME_COLUMNS,
         **AI_EVALUATION_COLUMNS,
         **LEAD_REPORT_COLUMNS,
+        **AVAILABILITY_COLUMNS,
     }.items():
         if column_name not in existing_columns:
             connection.execute(
                 f'ALTER TABLE "Listing" ADD COLUMN "{column_name}" {column_type}'
             )
+    connection.execute(
+        """
+        UPDATE "Listing"
+        SET "lastSeenAt" = COALESCE("lastSeenAt", "createdAt")
+        WHERE "lastSeenAt" IS NULL
+        """
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "Listing_availabilityStatus_idx" ON "Listing"("availabilityStatus")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "Listing_lastCheckedAt_idx" ON "Listing"("lastCheckedAt")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "Listing_lastVerifiedAt_idx" ON "Listing"("lastVerifiedAt")'
+    )
 
 
 def ensure_admin_flips_table(connection: sqlite3.Connection) -> None:
@@ -61,11 +107,25 @@ def ensure_admin_flips_table(connection: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS "AdminFlip" (
           "id" TEXT NOT NULL PRIMARY KEY,
+          "listingId" TEXT,
           "vehicleTitle" TEXT NOT NULL,
           "status" TEXT NOT NULL DEFAULT 'WATCHING',
           "sourceUrl" TEXT,
+          "askingPriceCents" INTEGER,
+          "thumbnailPath" TEXT,
+          "kms" INTEGER,
+          "rego" TEXT,
+          "sellerContacted" BOOLEAN NOT NULL DEFAULT false,
+          "sellerContactedAt" DATETIME,
+          "priority" TEXT NOT NULL DEFAULT 'MEDIUM',
+          "nextAction" TEXT,
           "purchaseDate" DATETIME,
           "saleDate" DATETIME,
+          "valuationCents" INTEGER,
+          "targetSellPriceCents" INTEGER,
+          "maxBuyPriceCents" INTEGER,
+          "estimatedProfitCents" INTEGER,
+          "valuationCheckedAt" DATETIME,
           "purchasePriceCents" INTEGER NOT NULL DEFAULT 0,
           "repairCostCents" INTEGER NOT NULL DEFAULT 0,
           "otherCostCents" INTEGER NOT NULL DEFAULT 0,
@@ -79,8 +139,25 @@ def ensure_admin_flips_table(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    existing_columns = {
+        row[1] for row in connection.execute('PRAGMA table_info("AdminFlip")')
+    }
+    for column_name, column_type in ADMIN_FLIP_COLUMNS.items():
+        if column_name not in existing_columns:
+            connection.execute(
+                f'ALTER TABLE "AdminFlip" ADD COLUMN "{column_name}" {column_type}'
+            )
+    connection.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "AdminFlip_listingId_key" ON "AdminFlip"("listingId")'
+    )
     connection.execute(
         'CREATE INDEX IF NOT EXISTS "AdminFlip_status_idx" ON "AdminFlip"("status")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "AdminFlip_priority_idx" ON "AdminFlip"("priority")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "AdminFlip_sellerContacted_idx" ON "AdminFlip"("sellerContacted")'
     )
     connection.execute(
         'CREATE INDEX IF NOT EXISTS "AdminFlip_purchaseDate_idx" ON "AdminFlip"("purchaseDate")'

@@ -31,9 +31,8 @@ function ChoiceCard({
       : "bg-violet-700 hover:bg-violet-800";
 
   return (
-    <Link
+    <article
       className={`group flex min-h-[32rem] flex-col justify-between overflow-hidden rounded-[2.5rem] border border-white/80 bg-gradient-to-br ${gradient} p-7 shadow-2xl shadow-slate-300/70 transition hover:-translate-y-1 hover:shadow-slate-400/60`}
-      href={href}
     >
       <div>
         <div className="flex items-center justify-between gap-4">
@@ -68,13 +67,14 @@ function ChoiceCard({
             </div>
           ))}
         </div>
-        <div
-          className={`mt-5 inline-flex w-full items-center justify-center rounded-3xl px-5 py-4 text-sm font-bold text-white shadow-xl shadow-slate-300/70 transition group-hover:scale-[1.01] ${button}`}
+        <Link
+          className={`mt-5 inline-flex w-full items-center justify-center rounded-3xl px-5 py-4 text-sm font-bold text-white shadow-xl shadow-slate-300/70 transition hover:scale-[1.01] ${button}`}
+          href={href}
         >
-          Go to {title}
-        </div>
+          Open {title}
+        </Link>
       </div>
-    </Link>
+    </article>
   );
 }
 

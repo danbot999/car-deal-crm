@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { normalizeFlipInput } from "@/lib/admin";
+import {
+  adminApiErrorResponse,
+  isPrismaRecordNotFound
+} from "@/lib/adminApiErrors";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +31,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       flip
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Could not update car.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return adminApiErrorResponse(error, "Could not update car.");
   }
 }
 
@@ -39,10 +41,13 @@ export async function DELETE(_request: Request, context: RouteContext) {
   try {
     await prisma.adminFlip.delete({ where: { id } });
     return NextResponse.json({ message: "Car removed from admin tracker." });
-  } catch {
-    return NextResponse.json(
-      { error: "Could not remove car." },
-      { status: 400 }
-    );
+  } catch (error) {
+    if (isPrismaRecordNotFound(error)) {
+      return NextResponse.json({
+        message: "Car already removed from admin tracker."
+      });
+    }
+
+    return adminApiErrorResponse(error, "Could not remove car.");
   }
 }

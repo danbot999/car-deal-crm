@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { normalizeFlipInput } from "@/lib/admin";
+import { adminApiErrorResponse } from "@/lib/adminApiErrors";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +17,6 @@ export async function POST(request: Request) {
       flip
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Could not add car.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return adminApiErrorResponse(error, "Could not add car.");
   }
 }
