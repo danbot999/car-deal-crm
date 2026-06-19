@@ -14,6 +14,7 @@ from check_marketplace_availability import check_rows as check_availability_rows
 from check_marketplace_availability import connect_crm_db
 from check_marketplace_availability import load_candidate_rows
 from import_n8n_listings import import_rows
+from sync_cloud_crm import sync_cloud_once
 
 
 LOCK_FILE = Path(__file__).resolve().parents[1] / "work" / "crm-sync.lock"
@@ -97,6 +98,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--availability-limit", type=int, default=30)
     parser.add_argument("--availability-stale-hours", type=int, default=6)
     parser.add_argument("--availability-failure-threshold", type=int, default=2)
+    parser.add_argument("--cloud-sync-interval-seconds", type=int, default=600)
+    parser.add_argument("--skip-cloud", action="store_true")
     parser.add_argument("--once", action="store_true")
     return parser.parse_args()
 
@@ -141,8 +144,11 @@ async def main() -> None:
         raise ValueError("--interval-seconds must be at least 10")
     if args.availability_interval_seconds < 60:
         raise ValueError("--availability-interval-seconds must be at least 60")
+    if args.cloud_sync_interval_seconds < 60:
+        raise ValueError("--cloud-sync-interval-seconds must be at least 60")
 
     last_availability_run = 0.0
+    last_cloud_sync = 0.0
 
     while True:
         try:
@@ -155,6 +161,25 @@ async def main() -> None:
             if should_check_availability:
                 await run_availability_once(args)
                 last_availability_run = time.monotonic()
+
+            should_sync_cloud = (
+                not args.skip_cloud
+                and time.monotonic() - last_cloud_sync
+                >= args.cloud_sync_interval_seconds
+            )
+            if should_sync_cloud:
+                try:
+                    cloud_result = await asyncio.to_thread(sync_cloud_once)
+                    print(
+                        f"[CLOUD SYNC] {timestamp()} {cloud_result}",
+                        flush=True,
+                    )
+                    last_cloud_sync = time.monotonic()
+                except Exception as error:
+                    print(
+                        f"[CLOUD SYNC] {timestamp()} failed: {error}",
+                        flush=True,
+                    )
         except Exception as error:
             print(f"[CRM SYNC] {timestamp()} failed: {error}", flush=True)
 

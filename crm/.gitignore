@@ -1,5 +1,7 @@
 .next/
 node_modules/
+.env*
+!.env.example
 prisma/dev.db
 prisma/dev.db-journal
 prisma/dev.db-wal
@@ -14,5 +16,8 @@ public/listing-images/**/*.png
 public/listing-images/**/*.webp
 work/trademe-profile*/
 work/trademe-profile.json
+work/*.db
+work/*.lock
+work/*.log
 __pycache__/
 *.pyc

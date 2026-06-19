@@ -14,6 +14,7 @@
     "db:push": "prisma db push",
     "import:n8n": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\import_n8n_listings.py'\"",
     "sync:n8n": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\sync_n8n_to_crm.py'\"",
+    "sync:cloud": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\sync_cloud_crm.py'\"",
     "upgrade:n8n-filter": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\upgrade_n8n_fail_open_workflow.py'\"",
     "check:availability": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\check_marketplace_availability.py'\"",
     "test:availability": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\test_availability_checker.py'\"",

@@ -19,6 +19,8 @@ services:
         value: gpt-4o-mini
       - key: OPENAI_RESEARCH_MODEL
         value: gpt-4o-mini
+      - key: CRM_INGEST_TOKEN_SHA256
+        value: b9e1a9065d25a89a42ab97a38945fa1e021ddb954c24e1902169c8ad00e8bc11
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
 
