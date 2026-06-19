@@ -7,7 +7,7 @@
     "dev:hot": "next dev --webpack -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
-    "start:render": "mkdir -p /var/data && prisma db push && next start -H 0.0.0.0 -p ${PORT:-3001}",
+    "start:render": "mkdir -p /tmp/car-deal-crm && prisma db push && next start -H 0.0.0.0 -p ${PORT:-3001}",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
     "db:init": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '..\\.venv\\Scripts\\python.exe' 'scripts\\init_crm_db.py'\"",

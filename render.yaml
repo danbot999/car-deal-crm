@@ -12,7 +12,7 @@ services:
       - key: NODE_VERSION
         value: 24
       - key: DATABASE_URL
-        value: file:/var/data/render.db
+        value: file:/tmp/car-deal-crm/render.db
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
