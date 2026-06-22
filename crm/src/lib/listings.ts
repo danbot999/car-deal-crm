@@ -42,17 +42,17 @@ export const availabilityStatuses = [
 export type AvailabilityStatus = (typeof availabilityStatuses)[number];
 
 export const hiddenAvailabilityStatuses: AvailabilityStatus[] = [
+  "NEEDS_REVIEW",
+  "POSSIBLY_SOLD",
   "CONFIRMED_SOLD",
   "SOLD",
   "UNAVAILABLE",
-  "EXPIRED"
+  "EXPIRED",
+  "UNKNOWN"
 ];
 
 export const dashboardVisibleAvailabilityStatuses: AvailabilityStatus[] = [
-  "ACTIVE",
-  "NEEDS_REVIEW",
-  "POSSIBLY_SOLD",
-  "UNKNOWN"
+  "ACTIVE"
 ];
 
 export const availabilityLabels: Record<AvailabilityStatus, string> = {
@@ -114,10 +114,12 @@ function originFilter(origin?: string): Prisma.ListingWhereInput | null {
 
 export async function getDashboardData(filters: ListingFilters) {
   const where: Prisma.ListingWhereInput = {
-    availabilityStatus: { in: dashboardVisibleAvailabilityStatuses }
+    availabilityStatus: { in: dashboardVisibleAvailabilityStatuses },
+    status: { notIn: ["SOLD", "ARCHIVED"] }
   };
   const activeWhere: Prisma.ListingWhereInput = {
-    availabilityStatus: { in: dashboardVisibleAvailabilityStatuses }
+    availabilityStatus: { in: dashboardVisibleAvailabilityStatuses },
+    status: { notIn: ["SOLD", "ARCHIVED"] }
   };
   const query = filters.q?.trim();
   const selectedOrigin: VehicleOrigin =
@@ -155,7 +157,12 @@ export async function getDashboardData(filters: ListingFilters) {
     prisma.listing.count(),
     prisma.listing.count({ where: activeWhere }),
     prisma.listing.count({
-      where: { availabilityStatus: { in: hiddenAvailabilityStatuses } }
+      where: {
+        OR: [
+          { availabilityStatus: { in: hiddenAvailabilityStatuses } },
+          { status: { in: ["SOLD", "ARCHIVED"] } }
+        ]
+      }
     }),
     prisma.listing.count({ where: { ...activeWhere, status: "NEW" } }),
     prisma.listing.count({ where: { ...activeWhere, valuationCents: null } })

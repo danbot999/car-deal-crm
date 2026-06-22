@@ -12,6 +12,9 @@ const maxPriceCents = 700_000;
 const defaultIngestTokenHash =
   "b9e1a9065d25a89a42ab97a38945fa1e021ddb954c24e1902169c8ad00e8bc11";
 const facebookItemPattern = /\/marketplace\/item\/(\d+)/i;
+const allowedCarCategoryPattern = /\bcars?\s*(?:&|and)\s*trucks?\b/i;
+const excludedCarCategoryPattern = /\b(?:rvs?\s*(?:&|and)\s*campers?|commercial\s+trucks?|buses?|coaches?|motorcycles?|motorbikes?|scooters?|trailers?|boats?|parts?)\b/i;
+const excludedVehicleTitlePattern = /\b(?:bus|coach|school\s*bus|tour\s*bus|mini[\s-]?bus|motorhome|camper(?:van)?|caravan|rv|commercial\s*truck|box\s*truck|flat[\s-]?deck|tipper|tractor\s*unit|lorry|isuzu\s+gala|mitsubishi\s+rosa|toyota\s+coaster|go[\s-]?kart|motorcycle|motorbike|scooter|trailer|boat|jet\s*ski|quad\s*bike|atv|utv|tyres?|tires?|wheels?|rims?|mags?|parts?|wrecking|dismantling|canopy|bumper|gearbox|transmission|headlight|tail\s*light|seat\s*covers?)\b/i;
 const allowedAvailabilityStatuses = new Set([
   "ACTIVE",
   "NEEDS_REVIEW",
@@ -98,6 +101,16 @@ function canonicalFacebookUrl(value: unknown) {
   };
 }
 
+function isPassengerCarListing(title: string, category: string | null) {
+  if (!category || !allowedCarCategoryPattern.test(category)) {
+    return false;
+  }
+  if (excludedCarCategoryPattern.test(category)) {
+    return false;
+  }
+  return !excludedVehicleTitlePattern.test(title);
+}
+
 function prepareListing(value: unknown): PreparedListing {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Each item must be an object.");
@@ -110,6 +123,10 @@ function prepareListing(value: unknown): PreparedListing {
   const title = cleanString(item.title, 300);
   if (!title) {
     throw new Error(`Listing ${facebookItemId} is missing a title.`);
+  }
+  const category = cleanString(item.category, 120);
+  if (!isPassengerCarListing(title, category)) {
+    throw new Error(`Listing ${facebookItemId} is not a passenger car.`);
   }
 
   const askingPriceCents = Number(item.askingPriceCents);
@@ -144,7 +161,7 @@ function prepareListing(value: unknown): PreparedListing {
     facebookItemId,
     title,
     askingPriceCents,
-    category: cleanString(item.category, 120),
+    category,
     remoteImageUrl:
       remoteImageUrl && /^https?:\/\//i.test(remoteImageUrl)
         ? remoteImageUrl
@@ -219,18 +236,30 @@ export async function POST(request: Request) {
     );
   }
 
-  let items: PreparedListing[];
-  try {
-    const byUrl = new Map<string, PreparedListing>();
-    for (const rawItem of rawItems) {
+  const byUrl = new Map<string, PreparedListing>();
+  const rejected: string[] = [];
+  for (const rawItem of rawItems) {
+    try {
       const prepared = prepareListing(rawItem);
       byUrl.set(prepared.facebookUrl, prepared);
+    } catch (error) {
+      rejected.push(
+        error instanceof Error ? error.message : "Invalid listing payload."
+      );
     }
-    items = [...byUrl.values()];
-  } catch (error) {
+  }
+  const items = [...byUrl.values()];
+  if (items.length === 0) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Invalid listing payload." },
-      { status: 400 }
+      {
+        ok: true,
+        received: rawItems.length,
+        stored: 0,
+        created: 0,
+        updated: 0,
+        rejected: rejected.length,
+        rejectionReasons: rejected.slice(0, 20)
+      }
     );
   }
 
@@ -239,9 +268,15 @@ export async function POST(request: Request) {
     select: { facebookUrl: true }
   });
   const existingUrls = new Set(existingRows.map((item) => item.facebookUrl));
+  const storableItems = items.filter(
+    (item) =>
+      item.availabilityStatus === "ACTIVE" ||
+      existingUrls.has(item.facebookUrl)
+  );
+  const rejectedInactive = items.length - storableItems.length;
 
   await prisma.$transaction(
-    items.map((item) =>
+    storableItems.map((item) =>
       prisma.listing.upsert({
         where: { facebookUrl: item.facebookUrl },
         create: {
@@ -292,12 +327,16 @@ export async function POST(request: Request) {
     )
   );
 
-  const created = items.filter((item) => !existingUrls.has(item.facebookUrl)).length;
+  const created = storableItems.filter(
+    (item) => !existingUrls.has(item.facebookUrl)
+  ).length;
   return NextResponse.json({
     ok: true,
     received: rawItems.length,
-    stored: items.length,
+    stored: storableItems.length,
     created,
-    updated: items.length - created
+    updated: storableItems.length - created,
+    rejected: rejected.length + rejectedInactive,
+    rejectionReasons: rejected.slice(0, 20)
   });
 }
