@@ -41,6 +41,27 @@ type DashboardListing = {
   valuationError: string | null;
   valuationCheckedAt: Date | null;
   valuationSource: string | null;
+  marketValuationStatus: string;
+  marketValuationError: string | null;
+  marketValueCents: number | null;
+  marketComparableCount: number;
+  marketLowestComparableCents: number | null;
+  marketHighestComparableCents: number | null;
+  marketAucklandMedianCents: number | null;
+  marketDifferenceCents: number | null;
+  marketDifferencePercent: number | null;
+  marketRelation: string | null;
+  marketVerdict: string | null;
+  marketConfidence: string | null;
+  marketReason: string | null;
+  marketTargetSellCents: number | null;
+  marketMaxBuyCents: number | null;
+  marketExpectedSpreadCents: number | null;
+  marketSourcesAttempted: number;
+  marketSourcesSuccessful: number;
+  marketSourceBreakdownJson: string | null;
+  marketComparablesJson: string | null;
+  marketValuedAt: Date | null;
   displayTargetSellPriceCents: number | null;
   displayMaxBuyPriceCents: number | null;
   displayEstimatedProfitCents: number | null;
@@ -261,6 +282,145 @@ function AiSnapshot({ listing }: { listing: DashboardListing }) {
   );
 }
 
+type MarketComparable = {
+  source?: string;
+  title?: string;
+  url?: string;
+  priceCents?: number;
+  year?: number | null;
+  kms?: number | null;
+  region?: string | null;
+  matchTier?: string;
+  matchScore?: number;
+};
+
+function marketComparables(value: string | null): MarketComparable[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is MarketComparable => Boolean(item && typeof item === "object"))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+const marketVerdictLabels: Record<string, string> = {
+  EXCELLENT_DEAL: "Excellent deal",
+  GOOD_DEAL: "Good deal",
+  FAIR_MARKET_VALUE: "Fair market value",
+  OVERPRICED: "Overpriced",
+  VERY_OVERPRICED: "Very overpriced"
+};
+
+function MarketValuationPanel({ listing }: { listing: DashboardListing }) {
+  const valued = listing.marketValueCents != null;
+  const evidence = marketComparables(listing.marketComparablesJson);
+  const difference = listing.marketDifferenceCents;
+  const good = difference != null && difference > 0;
+  const verdict = marketVerdictLabels[listing.marketVerdict ?? ""] ??
+    (listing.marketValuationStatus === "INSUFFICIENT_DATA" ? "Insufficient data" : "Valuation pending");
+  const badgeClass = !valued
+    ? "bg-amber-100 text-amber-800"
+    : good
+      ? "bg-emerald-100 text-emerald-800"
+      : difference === 0
+        ? "bg-slate-100 text-slate-700"
+        : "bg-rose-100 text-rose-800";
+
+  return (
+    <section className="rounded-[1.8rem] border border-cyan-100 bg-gradient-to-br from-cyan-50 via-white to-indigo-50 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-700">
+            NZ asking-market index
+          </p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-950">{verdict}</h3>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${badgeClass}`}>
+            {listing.marketValuationStatus.replaceAll("_", " ").toLowerCase()}
+          </span>
+          {listing.marketConfidence ? (
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
+              {listing.marketConfidence.toLowerCase()} confidence
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {valued ? (
+        <>
+          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+            <CompactMetric label="Market median" value={formatMoney(listing.marketValueCents)} />
+            <CompactMetric
+              label="Difference"
+              tone={good ? "good" : difference && difference < 0 ? "bad" : "default"}
+              value={`${difference != null && difference > 0 ? "+" : ""}${formatMoney(difference)}`}
+            />
+            <CompactMetric
+              label="Percent"
+              tone={good ? "good" : difference && difference < 0 ? "bad" : "default"}
+              value={listing.marketDifferencePercent == null ? "Awaiting valuation" : `${listing.marketDifferencePercent > 0 ? "+" : ""}${listing.marketDifferencePercent.toFixed(1)}%`}
+            />
+            <CompactMetric label="Comparables" value={String(listing.marketComparableCount)} />
+            <CompactMetric
+              label="Comparable range"
+              value={`${formatMoney(listing.marketLowestComparableCents)} to ${formatMoney(listing.marketHighestComparableCents)}`}
+            />
+            <CompactMetric label="80% sell target" value={formatMoney(listing.marketTargetSellCents)} />
+          </div>
+          <p className="mt-4 text-sm leading-6 text-slate-600">{listing.marketReason}</p>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-500">
+            <span>{listing.marketSourcesSuccessful}/{listing.marketSourcesAttempted} sources responded</span>
+            <span>Max buy {formatMoney(listing.marketMaxBuyCents)}</span>
+            <span>Expected spread {formatMoney(listing.marketExpectedSpreadCents)}</span>
+            {listing.marketAucklandMedianCents ? (
+              <span>Auckland median {formatMoney(listing.marketAucklandMedianCents)}</span>
+            ) : null}
+            {listing.marketValuedAt ? <span>Updated {dateLabel(listing.marketValuedAt)}</span> : null}
+          </div>
+        </>
+      ) : (
+        <p className="mt-4 text-sm leading-6 text-slate-600">
+          {listing.marketValuationError ?? listing.marketReason ??
+            "The valuation worker is collecting and deduplicating comparable NZ listings."}
+        </p>
+      )}
+
+      {evidence.length > 0 ? (
+        <details className="mt-5 rounded-2xl border border-slate-200 bg-white/90">
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-slate-800">
+            View {evidence.length} accepted comparable{evidence.length === 1 ? "" : "s"}
+          </summary>
+          <div className="grid gap-2 border-t border-slate-100 p-3">
+            {evidence.map((item, index) => (
+              <a
+                className="grid gap-2 rounded-2xl bg-slate-50 p-3 text-sm transition hover:bg-cyan-50 sm:grid-cols-[minmax(0,1fr)_auto]"
+                href={item.url}
+                key={`${item.url ?? item.title}-${index}`}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span>
+                  <strong className="block text-slate-900">{item.title ?? "Comparable vehicle"}</strong>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    {[item.source, item.year, item.kms ? `${item.kms.toLocaleString("en-NZ")} km` : null, item.region, item.matchTier]
+                      .filter(Boolean)
+                      .join(" | ")}
+                  </span>
+                </span>
+                <strong className="text-slate-950">{formatMoney(item.priceCents ?? null)}</strong>
+              </a>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
 function ListingCard({ listing }: { listing: DashboardListing }) {
   return (
     <article className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-slate-200/80 md:p-5">
@@ -336,6 +496,8 @@ function ListingCard({ listing }: { listing: DashboardListing }) {
         <AiSnapshot listing={listing} />
 
         </div>
+
+        <MarketValuationPanel listing={listing} />
 
         <ValuationButton
           aiEvaluatedAtLabel={shortDateLabel(listing.aiEvaluatedAt)}
@@ -432,8 +594,8 @@ export function Dashboard({ filters, listings, stats }: DashboardProps) {
           <StatCard label="Active/checking" value={stats.activeTotal} hint="Shown by default" />
           <StatCard label="Visible now" value={stats.visible} hint="Matching current filters" />
           <StatCard label="Hidden inactive" value={stats.hiddenInactive} hint="Sold, unavailable, or expired" />
-          <StatCard label="Awaiting valuation" value={stats.awaitingValuation} hint="Ready for review" />
-          <StatCard label="Potential leads" value={stats.potentialLeads} hint="Appears once valuation exists" />
+          <StatCard label="Awaiting market index" value={stats.awaitingValuation} hint="Queued for comparable search" />
+          <StatCard label="Potential leads" value={stats.potentialLeads} hint="Positive 80% target spread" />
         </section>
 
         <form className="mt-8 rounded-[2rem] border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-200/70">

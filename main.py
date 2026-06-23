@@ -19,6 +19,16 @@ REQUEST_TIMEOUT_SECONDS = 30
 LOCK_FILE = Path(__file__).with_name("work") / "monitor.lock"
 
 
+def is_publishable_item(item: dict[str, Any]) -> bool:
+    """Allow only verified, in-scope, currently active passenger cars."""
+    return (
+        item.get("verified") is True
+        and item.get("available") is True
+        and item.get("in_scope") is True
+        and str(item.get("availabilityStatus") or "").upper() == "ACTIVE"
+    )
+
+
 def _is_process_running(pid: int) -> bool:
     """Return whether a local process ID still exists."""
     if pid <= 0:
@@ -98,9 +108,14 @@ def _post_payload(payload: dict[str, Any]) -> int:
 
 
 async def run_scan() -> None:
-    """Run one Marketplace scan and transmit its full result to n8n."""
-    items = await fetch_marketplace_listings()
+    """Run one scan and transmit only verified active cars to n8n."""
+    scanned_items = await fetch_marketplace_listings()
+    items = [item for item in scanned_items if is_publishable_item(item)]
     payload = {"items": items}
+    by_status: dict[str, int] = {}
+    for item in scanned_items:
+        status = str(item.get("availabilityStatus") or "ACTIVE")
+        by_status[status] = by_status.get(status, 0) + 1
 
     try:
         status_code = await asyncio.to_thread(_post_payload, payload)
@@ -119,7 +134,9 @@ async def run_scan() -> None:
         return
 
     print(
-        f"[LOG] Scanned {len(items)} items. Payload transmitted successfully "
+        f"[LOG] Scanned {len(scanned_items)} items {by_status}; sent "
+        f"{len(items)} verified active cars and rejected "
+        f"{len(scanned_items) - len(items)}. Payload transmitted successfully "
         f"to n8n (HTTP {status_code}).",
         flush=True,
     )

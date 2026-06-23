@@ -165,7 +165,12 @@ export async function getDashboardData(filters: ListingFilters) {
       }
     }),
     prisma.listing.count({ where: { ...activeWhere, status: "NEW" } }),
-    prisma.listing.count({ where: { ...activeWhere, valuationCents: null } })
+    prisma.listing.count({
+      where: {
+        ...activeWhere,
+        marketValuationStatus: { notIn: ["VALUED", "INDICATIVE"] }
+      }
+    })
   ]);
 
   const visibleListings = listings.map((listing) => {
@@ -192,7 +197,7 @@ export async function getDashboardData(filters: ListingFilters) {
   const potentialLeads = await prisma.listing.count({
     where: {
       ...activeWhere,
-      estimatedProfitCents: {
+      marketExpectedSpreadCents: {
         gt: 0
       }
     }

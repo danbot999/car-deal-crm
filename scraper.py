@@ -50,10 +50,19 @@ PAGE_TITLE_SUFFIX_PATTERN = re.compile(
 )
 UNAVAILABLE_PATTERN = re.compile(
     r"(?i)\b("
-    r"sold|marked as sold|no longer available|not available|unavailable|"
+    r"marked as sold|listing sold|item sold|vehicle sold|has been sold|"
+    r"no longer available|this item is no longer available|"
     r"this content isn't available|this listing isn't available|"
-    r"content is not available|listing is not available"
+    r"this item isn't available|content is not available|"
+    r"listing is not available|item is not available"
     r")\b"
+)
+DETAIL_TEXT_STOP_MARKERS = (
+    "Today's picks",
+    "More from seller",
+    "More from Marketplace",
+    "Related Pages",
+    "Sponsored",
 )
 FINANCE_ONLY_PATTERN = re.compile(
     r"(?i)(?:\$\s*\d[\d,]*(?:\.\d{1,2})?\s*(?:per|/)\s*(?:week|wk)|"
@@ -64,6 +73,12 @@ EXCLUDED_CATEGORY_FRAGMENTS = (
     "motorcycle",
     "motorbike",
     "scooter",
+    "rvs & campers",
+    "rvs and campers",
+    "rv & camper",
+    "commercial truck",
+    "bus",
+    "coach",
     "trailer",
     "boat",
     "bicycle",
@@ -76,16 +91,17 @@ EXCLUDED_CATEGORY_FRAGMENTS = (
 ALLOWED_CATEGORY_FRAGMENTS = (
     "cars & trucks",
     "cars and trucks",
-    "rvs & campers",
-    "rvs and campers",
-    "commercial trucks",
 )
 EXCLUDED_TITLE_PATTERN = re.compile(
     r"(?i)\b("
     r"go[\s-]?kart|kart|mini[\s-]?bike|minibike|motorbike|motorcycle|"
     r"scooter|trailer|boat|jet\s*ski|quad\s*bike|atv|utv|"
+    r"bus|coach|school\s*bus|tour\s*bus|mini[\s-]?bus|"
+    r"motorhome|camper(?:van)?|caravan|rv|commercial\s*truck|"
+    r"box\s*truck|flat[\s-]?deck|tipper|tractor\s*unit|lorry|"
+    r"isuzu\s+gala|mitsubishi\s+rosa|toyota\s+coaster|"
     r"tyres?|tires?|wheels?|rims?|mags?|parts?|wrecking|dismantling|"
-    r"bumper|gearbox|engine\s+(?:mount|part|parts)|transmission|"
+    r"canopy|bumper|gearbox|engine\s+(?:mount|part|parts)|transmission|"
     r"headlight|tail\s*light|seat\s*covers?"
     r")\b"
 )
@@ -104,12 +120,17 @@ class Listing(TypedDict):
     available: NotRequired[bool]
     in_scope: NotRequired[bool]
     rejection_reason: NotRequired[str]
+    availabilityStatus: NotRequired[str]
+    availabilityConfidence: NotRequired[str]
+    filterReason: NotRequired[str]
+    sourceSearchUrl: NotRequired[str]
 
 
 class ListingCandidate(TypedDict):
     title: str
     price: float
     url: str
+    sourceSearchUrl: NotRequired[str]
 
 
 class DetailVerification(TypedDict):
@@ -119,6 +140,8 @@ class DetailVerification(TypedDict):
     in_scope: bool
     verified: bool
     rejection_reason: str
+    availability_status: str
+    availability_confidence: str
 
 
 def _clean_text(value: str) -> str:
@@ -187,14 +210,45 @@ def _is_title_candidate(text: str) -> bool:
 
 
 def _title_has_vehicle_exclusion(title: str) -> bool:
-    """Return whether the text clearly points to non-car/non-truck inventory."""
+    """Return whether the text clearly points outside passenger-car inventory."""
     return EXCLUDED_TITLE_PATTERN.search(title) is not None
+
+
+def is_strict_car_listing(title: str, category: str) -> bool:
+    """Accept only passenger-car listings with a verified Marketplace category."""
+    cleaned_title = _clean_title(title)
+    cleaned_category = _clean_text(category)
+    if not cleaned_title or not cleaned_category:
+        return False
+    if _is_excluded_category(cleaned_category):
+        return False
+    if not _is_allowed_category(cleaned_category):
+        return False
+    return not _title_has_vehicle_exclusion(cleaned_title)
 
 
 def _is_finance_only_listing(price: float, title: str, description: str) -> bool:
     """Detect finance advertisements masquerading as low sticker-price listings."""
     haystack = f"{title} {description}"
     return price < 1_000 and FINANCE_ONLY_PATTERN.search(haystack) is not None
+
+
+def _primary_detail_text(body_text: str) -> str:
+    """Remove recommendation sections that can contaminate listing checks."""
+    primary_text = body_text
+    for marker in DETAIL_TEXT_STOP_MARKERS:
+        marker_index = primary_text.find(marker)
+        if marker_index != -1:
+            primary_text = primary_text[:marker_index]
+    return primary_text
+
+
+def _has_unavailable_signal(page_title: str, description: str, body_text: str) -> bool:
+    """Detect sold/unavailable state without reading unrelated recommendations."""
+    haystack = f"{page_title} {description} {_primary_detail_text(body_text)}"
+    if UNAVAILABLE_PATTERN.search(haystack):
+        return True
+    return re.search(r"(?im)^\s*sold\s*$", haystack) is not None
 
 
 def _parse_category_from_page_title(page_title: str) -> str:
@@ -212,6 +266,12 @@ def _is_allowed_category(category: str) -> bool:
     if any(fragment in lowered for fragment in EXCLUDED_CATEGORY_FRAGMENTS):
         return False
     return any(fragment in lowered for fragment in ALLOWED_CATEGORY_FRAGMENTS)
+
+
+def _is_excluded_category(category: str) -> bool:
+    """Return whether a category clearly belongs outside road vehicles."""
+    lowered = category.casefold()
+    return any(fragment in lowered for fragment in EXCLUDED_CATEGORY_FRAGMENTS)
 
 
 def _best_detail_title(
@@ -310,6 +370,15 @@ def _all_target_urls() -> list[str]:
     return list(dict.fromkeys(urls))
 
 
+def _always_scan_urls() -> list[str]:
+    """Return search URLs that should be checked on every scan."""
+    configured_urls = getattr(config, "ALWAYS_SCAN_URLS", (config.TARGET_URL,))
+    urls = [str(url).strip() for url in configured_urls if str(url).strip()]
+    if config.TARGET_URL not in urls:
+        urls.insert(0, config.TARGET_URL)
+    return list(dict.fromkeys(urls))
+
+
 def _read_scan_offset(total_urls: int) -> int:
     """Read the rotating search offset used to spread coverage across scans."""
     if total_urls <= 0:
@@ -342,17 +411,26 @@ def _target_urls_for_scan() -> list[str]:
     if not urls:
         return [config.TARGET_URL]
 
-    batch_size = max(
+    max_urls = max(
         1,
-        min(
-            len(urls),
-            int(getattr(config, "MAX_SEARCH_URLS_PER_SCAN", len(urls))),
-        ),
+        min(len(urls), int(getattr(config, "MAX_SEARCH_URLS_PER_SCAN", len(urls)))),
     )
-    offset = _read_scan_offset(len(urls))
-    selected = [urls[(offset + index) % len(urls)] for index in range(batch_size)]
-    _write_scan_offset((offset + batch_size) % len(urls))
-    return selected
+    always_urls = [url for url in _always_scan_urls() if url in urls]
+    if len(always_urls) >= max_urls:
+        return always_urls[:max_urls]
+
+    rotating_pool = [url for url in urls if url not in set(always_urls)]
+    if not rotating_pool:
+        return always_urls
+
+    rotating_batch_size = min(len(rotating_pool), max_urls - len(always_urls))
+    offset = _read_scan_offset(len(rotating_pool))
+    rotating_selected = [
+        rotating_pool[(offset + index) % len(rotating_pool)]
+        for index in range(rotating_batch_size)
+    ]
+    _write_scan_offset((offset + rotating_batch_size) % len(rotating_pool))
+    return [*always_urls, *rotating_selected]
 
 
 async def _collect_candidates_from_search_url(
@@ -360,35 +438,52 @@ async def _collect_candidates_from_search_url(
     search_url: str,
 ) -> list[ListingCandidate]:
     """Render and scroll one Marketplace search URL, returning card candidates."""
-    page = await context.new_page()
-    try:
-        await page.goto(search_url, wait_until="domcontentloaded", timeout=60_000)
-        await page.wait_for_timeout(4_000)
+    retries = max(1, int(getattr(config, "SEARCH_PAGE_RETRIES", 1)))
+    retry_backoff_ms = max(0, int(getattr(config, "SEARCH_RETRY_BACKOFF_MS", 0)))
 
-        scroll_steps = max(0, int(getattr(config, "SEARCH_SCROLL_STEPS", 0)))
-        scroll_pause_ms = max(
-            250,
-            int(getattr(config, "SEARCH_SCROLL_PAUSE_MS", 1_000)),
-        )
-        for _ in range(scroll_steps):
-            await page.evaluate("window.scrollBy(0, Math.floor(window.innerHeight * 0.9))")
-            await page.wait_for_timeout(scroll_pause_ms)
+    for attempt in range(1, retries + 1):
+        page = await context.new_page()
+        try:
+            await page.goto(search_url, wait_until="domcontentloaded", timeout=60_000)
+            await page.wait_for_timeout(4_000)
 
-        html = await page.content()
-        candidates = parse_listings(html)
-        print(
-            f"[LOG] Search URL yielded {len(candidates)} candidate(s): {search_url}",
-            flush=True,
-        )
-        return candidates
-    except PlaywrightTimeoutError as exc:
-        print(f"[WARN] Search page timed out {search_url}: {exc}", flush=True)
-        return []
-    except Exception as exc:
-        print(f"[WARN] Search page failed {search_url}: {exc}", flush=True)
-        return []
-    finally:
-        await page.close()
+            scroll_steps = max(0, int(getattr(config, "SEARCH_SCROLL_STEPS", 0)))
+            scroll_pause_ms = max(
+                250,
+                int(getattr(config, "SEARCH_SCROLL_PAUSE_MS", 1_000)),
+            )
+            for _ in range(scroll_steps):
+                await page.evaluate("window.scrollBy(0, Math.floor(window.innerHeight * 0.9))")
+                await page.wait_for_timeout(scroll_pause_ms)
+
+            html = await page.content()
+            candidates = parse_listings(html)
+            for candidate in candidates:
+                candidate["sourceSearchUrl"] = search_url
+            print(
+                f"[LOG] Search URL yielded {len(candidates)} candidate(s): {search_url}",
+                flush=True,
+            )
+            return candidates
+        except PlaywrightTimeoutError as exc:
+            print(
+                f"[WARN] Search page timed out "
+                f"{search_url} (attempt {attempt}/{retries}): {exc}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"[WARN] Search page failed "
+                f"{search_url} (attempt {attempt}/{retries}): {exc}",
+                flush=True,
+            )
+        finally:
+            await page.close()
+
+        if attempt < retries and retry_backoff_ms:
+            await asyncio.sleep(retry_backoff_ms / 1000)
+
+    return []
 
 
 async def collect_search_candidates(context: Any) -> list[ListingCandidate]:
@@ -447,21 +542,24 @@ def verify_listing_detail(
         return {
             "title": "",
             "category": category,
-            "available": False,
+            "available": True,
             "in_scope": False,
             "verified": False,
             "rejection_reason": "missing_detail_title",
+            "availability_status": "NEEDS_REVIEW",
+            "availability_confidence": "LOW",
         }
 
-    unavailable_haystack = f"{page_title} {description} {body_text}"
-    if UNAVAILABLE_PATTERN.search(unavailable_haystack):
+    if _has_unavailable_signal(page_title, description, body_text):
         return {
             "title": title,
             "category": category,
             "available": False,
-            "in_scope": False,
+            "in_scope": True,
             "verified": True,
             "rejection_reason": "sold_or_unavailable",
+            "availability_status": "POSSIBLY_SOLD",
+            "availability_confidence": "MEDIUM",
         }
 
     if not category:
@@ -472,26 +570,25 @@ def verify_listing_detail(
             "in_scope": False,
             "verified": False,
             "rejection_reason": "missing_category",
+            "availability_status": "NEEDS_REVIEW",
+            "availability_confidence": "LOW",
         }
 
-    if not _is_allowed_category(category):
+    if not is_strict_car_listing(title, category):
+        reason = (
+            "excluded_category"
+            if _is_excluded_category(category) or not _is_allowed_category(category)
+            else "excluded_vehicle_type"
+        )
         return {
             "title": title,
             "category": category,
             "available": True,
             "in_scope": False,
             "verified": True,
-            "rejection_reason": "excluded_category",
-        }
-
-    if _title_has_vehicle_exclusion(title):
-        return {
-            "title": title,
-            "category": category,
-            "available": True,
-            "in_scope": False,
-            "verified": True,
-            "rejection_reason": "excluded_vehicle_type",
+            "rejection_reason": reason,
+            "availability_status": "ACTIVE",
+            "availability_confidence": "HIGH",
         }
 
     if _is_finance_only_listing(candidate["price"], title, description):
@@ -502,6 +599,8 @@ def verify_listing_detail(
             "in_scope": False,
             "verified": True,
             "rejection_reason": "finance_only",
+            "availability_status": "ACTIVE",
+            "availability_confidence": "HIGH",
         }
 
     return {
@@ -511,6 +610,44 @@ def verify_listing_detail(
         "in_scope": True,
         "verified": True,
         "rejection_reason": "",
+        "availability_status": "ACTIVE",
+        "availability_confidence": "HIGH",
+    }
+
+
+def _listing_from_verification(
+    candidate: ListingCandidate,
+    verification: DetailVerification,
+) -> Listing | None:
+    """Return only verified, active passenger cars for the n8n payload."""
+    is_strict_active_car = (
+        verification["verified"]
+        and verification["available"]
+        and verification["in_scope"]
+        and verification["availability_status"] == "ACTIVE"
+        and is_strict_car_listing(
+            verification["title"],
+            verification["category"],
+        )
+    )
+    if not is_strict_active_car:
+        reason = verification["rejection_reason"] or verification["availability_status"]
+        print(f"[LOG] Rejected listing {candidate['url']}: {reason}", flush=True)
+        return None
+
+    return {
+        "title": verification["title"] or candidate["title"],
+        "price": candidate["price"],
+        "url": candidate["url"],
+        "category": verification["category"],
+        "verified": verification["verified"],
+        "available": verification["available"],
+        "in_scope": verification["in_scope"],
+        "rejection_reason": verification["rejection_reason"],
+        "availabilityStatus": verification["availability_status"],
+        "availabilityConfidence": verification["availability_confidence"],
+        "filterReason": verification["rejection_reason"],
+        "sourceSearchUrl": candidate.get("sourceSearchUrl", ""),
     }
 
 
@@ -560,25 +697,7 @@ async def _fetch_detail_data(context: Any, candidate: ListingCandidate) -> Listi
         await page.close()
 
     verification = verify_listing_detail(candidate, detail_data)
-    if not (
-        verification["verified"]
-        and verification["available"]
-        and verification["in_scope"]
-    ):
-        reason = verification["rejection_reason"] or "not_in_scope"
-        print(f"[LOG] Rejected listing {candidate['url']}: {reason}", flush=True)
-        return None
-
-    return {
-        "title": verification["title"],
-        "price": candidate["price"],
-        "url": candidate["url"],
-        "category": verification["category"],
-        "verified": True,
-        "available": True,
-        "in_scope": True,
-        "rejection_reason": "",
-    }
+    return _listing_from_verification(candidate, verification)
 
 
 async def enrich_and_filter_listings(

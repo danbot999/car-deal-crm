@@ -1,0 +1,30 @@
+# Runtime environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local databases, state and logs
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+*.lock
+crm/work/
+crm/public/listing-images/
+work/*.log
+work/*.lock
+work/*.sqlite
+work/scan_state.json
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Node and Next.js output
+node_modules/
+.next/

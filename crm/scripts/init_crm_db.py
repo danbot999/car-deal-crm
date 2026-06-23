@@ -52,6 +52,36 @@ AVAILABILITY_COLUMNS = {
     "unavailableCheckCount": "INTEGER NOT NULL DEFAULT 0",
 }
 
+MARKET_VALUATION_COLUMNS = {
+    "variant": "TEXT",
+    "transmission": "TEXT",
+    "fuelType": "TEXT",
+    "bodyType": "TEXT",
+    "region": "TEXT",
+    "marketValuationStatus": "TEXT NOT NULL DEFAULT 'NOT_STARTED'",
+    "marketValuationError": "TEXT",
+    "marketValueCents": "INTEGER",
+    "marketComparableCount": "INTEGER NOT NULL DEFAULT 0",
+    "marketLowestComparableCents": "INTEGER",
+    "marketHighestComparableCents": "INTEGER",
+    "marketAucklandMedianCents": "INTEGER",
+    "marketDifferenceCents": "INTEGER",
+    "marketDifferencePercent": "REAL",
+    "marketRelation": "TEXT",
+    "marketVerdict": "TEXT",
+    "marketConfidence": "TEXT",
+    "marketReason": "TEXT",
+    "marketTargetSellCents": "INTEGER",
+    "marketMaxBuyCents": "INTEGER",
+    "marketExpectedSpreadCents": "INTEGER",
+    "marketSourcesAttempted": "INTEGER NOT NULL DEFAULT 0",
+    "marketSourcesSuccessful": "INTEGER NOT NULL DEFAULT 0",
+    "marketSourceBreakdownJson": "TEXT",
+    "marketComparablesJson": "TEXT",
+    "marketValuedAt": "DATETIME",
+    "marketValuationRunId": "TEXT",
+}
+
 ADMIN_FLIP_COLUMNS = {
     "listingId": "TEXT",
     "askingPriceCents": "INTEGER",
@@ -79,6 +109,7 @@ def ensure_columns(connection: sqlite3.Connection) -> None:
         **AI_EVALUATION_COLUMNS,
         **LEAD_REPORT_COLUMNS,
         **AVAILABILITY_COLUMNS,
+        **MARKET_VALUATION_COLUMNS,
     }.items():
         if column_name not in existing_columns:
             connection.execute(
@@ -99,6 +130,15 @@ def ensure_columns(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         'CREATE INDEX IF NOT EXISTS "Listing_lastVerifiedAt_idx" ON "Listing"("lastVerifiedAt")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "Listing_marketValuationStatus_idx" ON "Listing"("marketValuationStatus")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "Listing_marketVerdict_idx" ON "Listing"("marketVerdict")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "Listing_marketValuedAt_idx" ON "Listing"("marketValuedAt")'
     )
 
 

@@ -1,1 +1,385 @@
-[{"updatedAt":"2026-06-08T08:29:47.000Z","createdAt":"2026-06-04T01:37:01.243Z","id":"z08K09PwtzaaDmZN","name":"Auckland Car Listing Monitor","description":"Receives verified Auckland cars and trucks from the Python monitor, filters unavailable or irrelevant listings, deduplicates by URL, and stores new listings.","active":true,"isArchived":false,"nodes":[{"parameters":{"httpMethod":"POST","path":"e0c77d34-c1ec-410a-9b23-b9340180379b","options":{}},"type":"n8n-nodes-base.webhook","typeVersion":2.1,"position":[0,0],"id":"d6b9adc7-e643-465c-adf7-4de658262289","name":"Webhook","webhookId":"e0c77d34-c1ec-410a-9b23-b9340180379b"},{"parameters":{"resource":"table","operation":"create","tableName":"car_listings","columns":{"column":[{"name":"title"},{"name":"price","type":"number"},{"name":"url"},{"name":"firstSeen"}]},"options":{"createIfNotExists":true}},"type":"n8n-nodes-base.dataTable","typeVersion":1.1,"position":[272,0],"id":"0afd8612-6742-4575-af49-d85bc797f544","name":"Ensure Car Listings Table"},{"parameters":{"jsCode":"const source = $('Webhook').first().json;\nconst listings = source.body?.items ?? source.items ?? [];\n\nif (!Array.isArray(listings)) {\n  return [];\n}\n\nconst now = new Date().toISOString();\nconst seenInPayload = new Set();\nconst output = [];\n\nconst excludedTitlePattern = /\\b(go[\\s-]?kart|kart|mini[\\s-]?bike|minibike|motorbike|motorcycle|scooter|trailer|boat|jet\\s*ski|quad\\s*bike|atv|utv|tyres?|tires?|wheels?|rims?|mags?|parts?|wrecking|dismantling|bumper|gearbox|transmission|headlight|tail\\s*light|seat\\s*covers?)\\b/i;\nconst financeOnlyPattern = /(\\$\\s*\\d[\\d,]*(?:\\.\\d{1,2})?\\s*(?:per|\\/)\\s*(?:week|wk)|\\b(?:per week|weekly payments?|from\\s+\\$\\s*\\d[\\d,]*\\s*\\/?\\s*(?:week|wk))\\b)/i;\nconst allowedCategories = ['cars & trucks', 'cars and trucks', 'rvs & campers', 'rvs and campers', 'commercial trucks'];\nconst excludedCategories = ['powersport', 'motorcycle', 'motorbike', 'scooter', 'trailer', 'boat', 'bicycle', 'bike', 'parts', 'wheels', 'tyres', 'tires'];\n\nfor (const listing of listings) {\n  const title = String(listing?.title ?? '').trim();\n  const price = Number(listing?.price);\n  const url = String(listing?.url ?? '').trim();\n  const category = String(listing?.category ?? '').trim().toLowerCase();\n  const verified = listing?.verified === true;\n  const available = listing?.available === true;\n  const inScope = listing?.in_scope === true;\n\n  const categoryAllowed = allowedCategories.some((value) => category.includes(value));\n  const categoryExcluded = excludedCategories.some((value) => category.includes(value));\n  const financeOnly = price < 1000 && financeOnlyPattern.test(title);\n\n  const isValid =\n    title.length > 0 &&\n    title !== 'Untitled Marketplace vehicle' &&\n    Number.isFinite(price) &&\n    price >= 0 &&\n    price <= 7000 &&\n    url.includes('/marketplace/item/') &&\n    verified &&\n    available &&\n    inScope &&\n    categoryAllowed &&\n    !categoryExcluded &&\n    !excludedTitlePattern.test(title) &&\n    !financeOnly &&\n    !seenInPayload.has(url);\n\n  if (!isValid) {\n    continue;\n  }\n\n  seenInPayload.add(url);\n  output.push({\n    json: {\n      title,\n      price,\n      url,\n      firstSeen: now,\n    },\n  });\n}\n\nreturn output;"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[528,0],"id":"d4067688-2b80-4811-9eb5-a6790757395e","name":"Prepare Car Listings"},{"parameters":{"operation":"rowNotExists","dataTableId":{"__rl":true,"mode":"name","value":"car_listings"},"matchType":"allConditions","filters":{"conditions":[{"keyName":"url","keyValue":"={{ $json.url }}"}]}},"type":"n8n-nodes-base.dataTable","typeVersion":1.1,"position":[784,0],"id":"c36fe016-d287-47ee-b1a7-269fba43973e","name":"If Listing Is New"},{"parameters":{"dataTableId":{"__rl":true,"mode":"name","value":"car_listings"},"columns":{"mappingMode":"autoMapInputData","value":{},"matchingColumns":[],"schema":[{"id":"title","displayName":"title","required":false,"defaultMatch":false,"display":true,"type":"string","readOnly":false,"removed":false},{"id":"price","displayName":"price","required":false,"defaultMatch":false,"display":true,"type":"number","readOnly":false,"removed":false},{"id":"url","displayName":"url","required":false,"defaultMatch":false,"display":true,"type":"string","readOnly":false,"removed":false},{"id":"firstSeen","displayName":"firstSeen","required":false,"defaultMatch":false,"display":true,"type":"string","readOnly":false,"removed":false}],"attemptToConvertTypes":false,"convertFieldsToString":false},"options":{}},"type":"n8n-nodes-base.dataTable","typeVersion":1.1,"position":[1040,0],"id":"05b7f71e-28f3-45da-96fb-430e6cd8f94c","name":"Store New Listing"}],"connections":{"Webhook":{"main":[[{"node":"Ensure Car Listings Table","type":"main","index":0}]]},"Ensure Car Listings Table":{"main":[[{"node":"Prepare Car Listings","type":"main","index":0}]]},"Prepare Car Listings":{"main":[[{"node":"If Listing Is New","type":"main","index":0}]]},"If Listing Is New":{"main":[[{"node":"Store New Listing","type":"main","index":0}]]}},"settings":{"executionOrder":"v1","binaryMode":"separate","saveDataErrorExecution":"all","saveDataSuccessExecution":"all"},"staticData":null,"meta":null,"nodeGroups":[],"pinData":{},"versionId":"87108bca-9f37-4478-9531-dd3d1966a328","activeVersionId":"87108bca-9f37-4478-9531-dd3d1966a328","versionCounter":8,"triggerCount":1,"tags":[],"shared":[{"updatedAt":"2026-06-04T01:37:01.247Z","createdAt":"2026-06-04T01:37:01.247Z","role":"workflow:owner","workflowId":"z08K09PwtzaaDmZN","projectId":"kUaBoGbk4cBc5gDp","project":{"updatedAt":"2026-06-04T01:36:31.537Z","createdAt":"2026-06-04T01:35:39.735Z","id":"kUaBoGbk4cBc5gDp","name":"Daniel Younan <dcnz.younan@gmail.com>","type":"personal","icon":null,"description":null,"creatorId":"e4c52575-6693-4a00-9e61-2680607e057c"}}],"versionMetadata":{"name":null,"description":null}}]
+[
+  {
+    "updatedAt": "2026-06-08T08:29:47.000Z",
+    "createdAt": "2026-06-04T01:37:01.243Z",
+    "id": "z08K09PwtzaaDmZN",
+    "name": "Auckland Car Listing Monitor",
+    "description": "Auckland car monitor with durable local NZ market-valuation queue and ten-minute reconciliation.",
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "e0c77d34-c1ec-410a-9b23-b9340180379b",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          0,
+          0
+        ],
+        "id": "d6b9adc7-e643-465c-adf7-4de658262289",
+        "name": "Webhook",
+        "webhookId": "e0c77d34-c1ec-410a-9b23-b9340180379b"
+      },
+      {
+        "parameters": {
+          "resource": "table",
+          "operation": "create",
+          "tableName": "car_listings",
+          "columns": {
+            "column": [
+              {
+                "name": "title",
+                "type": "string"
+              },
+              {
+                "name": "price",
+                "type": "number"
+              },
+              {
+                "name": "url",
+                "type": "string"
+              },
+              {
+                "name": "firstSeen",
+                "type": "string"
+              },
+              {
+                "name": "category",
+                "type": "string"
+              },
+              {
+                "name": "availabilityStatus",
+                "type": "string"
+              },
+              {
+                "name": "availabilityConfidence",
+                "type": "string"
+              },
+              {
+                "name": "filterReason",
+                "type": "string"
+              },
+              {
+                "name": "lastSeen",
+                "type": "string"
+              },
+              {
+                "name": "sourceSearchUrl",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {
+            "createIfNotExists": true
+          }
+        },
+        "type": "n8n-nodes-base.dataTable",
+        "typeVersion": 1.1,
+        "position": [
+          272,
+          0
+        ],
+        "id": "0afd8612-6742-4575-af49-d85bc797f544",
+        "name": "Ensure Car Listings Table"
+      },
+      {
+        "parameters": {
+          "jsCode": "const source = $('Webhook').first().json;\nconst listings = source.body?.items ?? source.items ?? [];\n\nif (!Array.isArray(listings)) {\n  return [];\n}\n\nconst now = new Date().toISOString();\nconst seenInPayload = new Set();\nconst output = [];\n\nconst excludedTitlePattern = /\\b(go[\\s-]?kart|kart|mini[\\s-]?bike|minibike|motorbike|motorcycle|scooter|trailer|boat|jet\\s*ski|quad\\s*bike|atv|utv|bus|coach|school\\s*bus|tour\\s*bus|mini[\\s-]?bus|motorhome|camper(?:van)?|caravan|rv|commercial\\s*truck|box\\s*truck|flat[\\s-]?deck|tipper|tractor\\s*unit|lorry|isuzu\\s+gala|mitsubishi\\s+rosa|toyota\\s+coaster|tyres?|tires?|wheels?|rims?|mags?|parts?|wrecking|dismantling|canopy|bumper|gearbox|transmission|headlight|tail\\s*light|seat\\s*covers?)\\b/i;\nconst financeOnlyPattern = /(\\$\\s*\\d[\\d,]*(?:\\.\\d{1,2})?\\s*(?:per|\\/)\\s*(?:week|wk)|\\b(?:per week|weekly payments?|from\\s+\\$\\s*\\d[\\d,]*\\s*\\/?\\s*(?:week|wk))\\b)/i;\nconst excludedCategories = ['powersport', 'motorcycle', 'motorbike', 'scooter', 'rvs & campers', 'rvs and campers', 'rv & camper', 'commercial truck', 'bus', 'coach', 'trailer', 'boat', 'bicycle', 'bike', 'parts', 'wheels', 'tyres', 'tires'];\nconst allowedCategories = ['cars & trucks', 'cars and trucks'];\nconst hardRejectionReasons = new Set(['excluded_category', 'excluded_vehicle_type', 'finance_only']);\nconst validStatuses = new Set(['ACTIVE', 'NEEDS_REVIEW', 'POSSIBLY_SOLD', 'CONFIRMED_SOLD', 'UNAVAILABLE', 'EXPIRED', 'UNKNOWN']);\nconst validConfidence = new Set(['HIGH', 'MEDIUM', 'LOW']);\n\nfunction clean(value) {\n  return String(value ?? '').replace(/\\s+/g, ' ').trim();\n}\n\nfunction normalizeStatus(listing) {\n  const raw = clean(listing?.availabilityStatus ?? listing?.availability_status).toUpperCase();\n  if (raw === 'SOLD') {\n    return 'POSSIBLY_SOLD';\n  }\n  if (validStatuses.has(raw)) {\n    return raw;\n  }\n  if (listing?.available === false) {\n    return 'POSSIBLY_SOLD';\n  }\n  if (listing?.verified === false || clean(listing?.rejection_reason)) {\n    return 'NEEDS_REVIEW';\n  }\n  return 'ACTIVE';\n}\n\nfunction normalizeConfidence(listing, status) {\n  const raw = clean(listing?.availabilityConfidence ?? listing?.availability_confidence).toUpperCase();\n  if (validConfidence.has(raw)) {\n    return raw;\n  }\n  if (status === 'ACTIVE') {\n    return listing?.verified === false ? 'LOW' : 'HIGH';\n  }\n  if (status === 'POSSIBLY_SOLD') {\n    return 'MEDIUM';\n  }\n  return 'LOW';\n}\n\nfor (const listing of listings) {\n  const title = clean(listing?.title);\n  const price = Number(listing?.price);\n  const url = clean(listing?.url);\n  const category = clean(listing?.category);\n  const categoryLower = category.toLowerCase();\n  const reason = clean(listing?.filterReason ?? listing?.rejection_reason);\n\n  const categoryExcluded = excludedCategories.some((value) => categoryLower.includes(value));\n  const categoryAllowed = allowedCategories.some((value) => categoryLower.includes(value));\n  const financeOnly = price < 1000 && financeOnlyPattern.test(`${title} ${reason}`);\n  const availabilityStatus = normalizeStatus(listing);\n  const strictActiveCar =\n    availabilityStatus === 'ACTIVE' &&\n    listing?.verified === true &&\n    listing?.available === true &&\n    listing?.in_scope === true;\n  const hardReject =\n    !title ||\n    title === 'Untitled Marketplace vehicle' ||\n    !Number.isFinite(price) ||\n    price < 0 ||\n    price > 7000 ||\n    !url.includes('/marketplace/item/') ||\n    seenInPayload.has(url) ||\n    categoryExcluded ||\n    !categoryAllowed ||\n    excludedTitlePattern.test(title) ||\n    financeOnly ||\n    hardRejectionReasons.has(reason) ||\n    !strictActiveCar;\n\n  if (hardReject) {\n    continue;\n  }\n\n  const availabilityConfidence = normalizeConfidence(listing, availabilityStatus);\n\n  seenInPayload.add(url);\n  output.push({\n    json: {\n      title,\n      price,\n      url,\n      firstSeen: clean(listing?.firstSeen) || now,\n      category,\n      availabilityStatus,\n      availabilityConfidence,\n      filterReason: reason || (availabilityStatus === 'ACTIVE' ? 'detail_page_loaded' : 'needs_review'),\n      lastSeen: now,\n      sourceSearchUrl: clean(listing?.sourceSearchUrl),\n    },\n  });\n}\n\nreturn output;",
+          "mode": "runOnceForAllItems",
+          "language": "javaScript"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          528,
+          0
+        ],
+        "id": "d4067688-2b80-4811-9eb5-a6790757395e",
+        "name": "Prepare Car Listings"
+      },
+      {
+        "parameters": {
+          "resource": "row",
+          "operation": "upsert",
+          "dataTableId": {
+            "__rl": true,
+            "mode": "name",
+            "value": "car_listings"
+          },
+          "matchType": "allConditions",
+          "filters": {
+            "conditions": [
+              {
+                "keyName": "url",
+                "condition": "eq",
+                "keyValue": "={{ $json.url }}"
+              }
+            ]
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "title": "={{ $json.title }}",
+              "price": "={{ $json.price }}",
+              "url": "={{ $json.url }}",
+              "firstSeen": "={{ $json.firstSeen }}",
+              "category": "={{ $json.category }}",
+              "availabilityStatus": "={{ $json.availabilityStatus }}",
+              "availabilityConfidence": "={{ $json.availabilityConfidence }}",
+              "filterReason": "={{ $json.filterReason }}",
+              "lastSeen": "={{ $json.lastSeen }}",
+              "sourceSearchUrl": "={{ $json.sourceSearchUrl }}"
+            },
+            "schema": [
+              {
+                "id": "title",
+                "displayName": "title",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "price",
+                "displayName": "price",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "url",
+                "displayName": "url",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "firstSeen",
+                "displayName": "firstSeen",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "category",
+                "displayName": "category",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "availabilityStatus",
+                "displayName": "availabilityStatus",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "availabilityConfidence",
+                "displayName": "availabilityConfidence",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "filterReason",
+                "displayName": "filterReason",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "lastSeen",
+                "displayName": "lastSeen",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              },
+              {
+                "id": "sourceSearchUrl",
+                "displayName": "sourceSearchUrl",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "readOnly": false,
+                "removed": false
+              }
+            ],
+            "matchingColumns": [],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.dataTable",
+        "typeVersion": 1.1,
+        "position": [
+          1040,
+          0
+        ],
+        "id": "05b7f71e-28f3-45da-96fb-430e6cd8f94c",
+        "name": "Upsert Car Listing"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://127.0.0.1:8010/v1/jobs/n8n",
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "keypair",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "title",
+                "value": "={{ $json.title }}"
+              },
+              {
+                "name": "price",
+                "value": "={{ $json.price }}"
+              },
+              {
+                "name": "url",
+                "value": "={{ $json.url }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000,
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "id": "62109166-4f32-4495-a670-c3976ebbccac",
+        "name": "Queue Market Valuation",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          1360.0,
+          0.0
+        ],
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 1000,
+        "onError": "continueRegularOutput"
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Ensure Car Listings Table",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Ensure Car Listings Table": {
+        "main": [
+          [
+            {
+              "node": "Prepare Car Listings",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Car Listings": {
+        "main": [
+          [
+            {
+              "node": "Upsert Car Listing",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Upsert Car Listing": {
+        "main": [
+          [
+            {
+              "node": "Queue Market Valuation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all"
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "87108bca-9f37-4478-9531-dd3d1966a328",
+    "activeVersionId": "87108bca-9f37-4478-9531-dd3d1966a328",
+    "versionCounter": 8,
+    "triggerCount": 1,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-06-04T01:37:01.247Z",
+        "createdAt": "2026-06-04T01:37:01.247Z",
+        "role": "workflow:owner",
+        "workflowId": "z08K09PwtzaaDmZN",
+        "projectId": "kUaBoGbk4cBc5gDp",
+        "project": {
+          "updatedAt": "2026-06-04T01:36:31.537Z",
+          "createdAt": "2026-06-04T01:35:39.735Z",
+          "id": "kUaBoGbk4cBc5gDp",
+          "name": "Daniel Younan <dcnz.younan@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "creatorId": "e4c52575-6693-4a00-9e61-2680607e057c"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": null,
+      "description": null
+    }
+  }
+]

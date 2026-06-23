@@ -23,10 +23,11 @@ ROOT = Path(__file__).resolve().parents[2]
 CRM_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scraper import MODERN_USER_AGENT  # noqa: E402
+from scraper import MODERN_USER_AGENT, is_strict_car_listing  # noqa: E402
 
 
 CRM_DB = CRM_ROOT / "prisma" / "dev.db"
+VALUATION_DB = CRM_ROOT / "work" / "vehicle-valuation.db"
 N8N_DB = Path.home() / ".n8n" / "database.sqlite"
 IMAGE_DIR = CRM_ROOT / "public" / "listing-images"
 SQLITE_TIMEOUT_SECONDS = 30
@@ -105,6 +106,17 @@ def normalize_availability_status(value: Any) -> str | None:
 def normalize_availability_confidence(value: Any) -> str:
     confidence = str(value or "").strip().upper()
     return confidence if confidence in AVAILABILITY_CONFIDENCES else "LOW"
+
+
+def is_active_passenger_car_row(row: dict[str, Any]) -> bool:
+    """Return whether an n8n row is safe to import as visible inventory."""
+    return (
+        normalize_availability_status(row.get("availabilityStatus")) == "ACTIVE"
+        and is_strict_car_listing(
+            str(row.get("title") or ""),
+            str(row.get("category") or ""),
+        )
+    )
 
 
 def facebook_item_id(url: str) -> str | None:
@@ -221,7 +233,9 @@ def row_needs_import(
 
     existing = crm_state.get(str(row["url"]))
     if existing is None:
-        return True
+        # Once the market-index service is installed, new n8n rows are published
+        # by the valuation endpoint only after comparable evidence is available.
+        return not VALUATION_DB.exists()
 
     return not existing.get("thumbnailPath")
 
@@ -482,14 +496,46 @@ def sync_existing_listing_metadata(
     return updated
 
 
+def archive_existing_non_car_rows(
+    connection: sqlite3.Connection,
+    rows: list[dict[str, Any]],
+) -> int:
+    """Hide previously imported rows that are clearly not passenger cars."""
+    archived = 0
+    for row in rows:
+        url = str(row.get("url") or "").strip()
+        category = str(row.get("category") or "").strip()
+        if not url or not category:
+            continue
+        if is_strict_car_listing(str(row.get("title") or ""), category):
+            continue
+        cursor = connection.execute(
+            """
+            UPDATE Listing
+            SET
+              status = 'ARCHIVED',
+              availabilityStatus = 'UNAVAILABLE',
+              availabilityConfidence = 'HIGH',
+              availabilityReason = 'excluded_non_passenger_vehicle',
+              updatedAt = CURRENT_TIMESTAMP
+            WHERE facebookUrl = ?
+            """,
+            (url,),
+        )
+        archived += cursor.rowcount
+    return archived
+
+
 async def import_rows(
     limit: int | None,
     skip_images: bool,
     refresh_existing: bool = False,
 ) -> dict[str, int]:
-    rows = get_n8n_rows()
+    all_rows = get_n8n_rows()
     if limit:
-        rows = rows[-limit:]
+        all_rows = all_rows[-limit:]
+    rows = [row for row in all_rows if is_active_passenger_car_row(row)]
+    filtered_out = len(all_rows) - len(rows)
 
     CRM_DB.parent.mkdir(parents=True, exist_ok=True)
     if not CRM_DB.exists():
@@ -504,14 +550,17 @@ async def import_rows(
 
     if not rows_to_process:
         with connect_crm_db() as connection:
-            metadata_updated = sync_existing_listing_metadata(connection, rows)
+            metadata_updated = sync_existing_listing_metadata(connection, all_rows)
+            archived_non_cars = archive_existing_non_car_rows(connection, all_rows)
             connection.commit()
         stats = get_crm_stats()
         return {
-            "read": len(rows),
+            "read": len(all_rows),
             "processed": 0,
             "skipped_existing": len(rows),
+            "filtered_out": filtered_out,
             "metadata_updated": metadata_updated,
+            "archived_non_cars": archived_non_cars,
             **stats,
         }
 
@@ -567,14 +616,17 @@ async def import_rows(
     with connect_crm_db() as connection:
         for row in prepared:
             upsert_listing(connection, row)
-        metadata_updated = sync_existing_listing_metadata(connection, rows)
+        metadata_updated = sync_existing_listing_metadata(connection, all_rows)
+        archived_non_cars = archive_existing_non_car_rows(connection, all_rows)
         connection.commit()
     stats = get_crm_stats()
     return {
-        "read": len(rows),
+        "read": len(all_rows),
         "processed": len(prepared),
         "skipped_existing": len(rows) - len(prepared),
+        "filtered_out": filtered_out,
         "metadata_updated": metadata_updated,
+        "archived_non_cars": archived_non_cars,
         **stats,
     }
 

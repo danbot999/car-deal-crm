@@ -38,6 +38,34 @@ type PreparedListing = {
   extractedYear: number | null;
   make: string | null;
   model: string | null;
+  variant: string | null;
+  kms: number | null;
+  transmission: string | null;
+  fuelType: string | null;
+  bodyType: string | null;
+  region: string | null;
+  marketValuationStatus: string;
+  marketValuationError: string | null;
+  marketValueCents: number | null;
+  marketComparableCount: number;
+  marketLowestComparableCents: number | null;
+  marketHighestComparableCents: number | null;
+  marketAucklandMedianCents: number | null;
+  marketDifferenceCents: number | null;
+  marketDifferencePercent: number | null;
+  marketRelation: string | null;
+  marketVerdict: string | null;
+  marketConfidence: string | null;
+  marketReason: string | null;
+  marketTargetSellCents: number | null;
+  marketMaxBuyCents: number | null;
+  marketExpectedSpreadCents: number | null;
+  marketSourcesAttempted: number;
+  marketSourcesSuccessful: number;
+  marketSourceBreakdownJson: string | null;
+  marketComparablesJson: string | null;
+  marketValuedAt: Date | null;
+  marketValuationRunId: string | null;
   availabilityStatus: string;
   availabilityConfidence: string;
   availabilityReason: string | null;
@@ -71,6 +99,12 @@ function parseOptionalInteger(value: unknown, minimum: number, maximum: number) 
     return null;
   }
   return parsed;
+}
+
+function parseOptionalNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function canonicalFacebookUrl(value: unknown) {
@@ -169,6 +203,34 @@ function prepareListing(value: unknown): PreparedListing {
     extractedYear: parseOptionalInteger(item.extractedYear, 1900, 2100),
     make: cleanString(item.make, 100),
     model: cleanString(item.model, 150),
+    variant: cleanString(item.variant, 200),
+    kms: parseOptionalInteger(item.kms, 0, 2_000_000),
+    transmission: cleanString(item.transmission, 60),
+    fuelType: cleanString(item.fuelType, 60),
+    bodyType: cleanString(item.bodyType, 80),
+    region: cleanString(item.region, 120),
+    marketValuationStatus: cleanString(item.marketValuationStatus, 40) ?? "NOT_STARTED",
+    marketValuationError: cleanString(item.marketValuationError, 4_000),
+    marketValueCents: parseOptionalInteger(item.marketValueCents, 0, 100_000_000),
+    marketComparableCount: parseOptionalInteger(item.marketComparableCount, 0, 100_000) ?? 0,
+    marketLowestComparableCents: parseOptionalInteger(item.marketLowestComparableCents, 0, 100_000_000),
+    marketHighestComparableCents: parseOptionalInteger(item.marketHighestComparableCents, 0, 100_000_000),
+    marketAucklandMedianCents: parseOptionalInteger(item.marketAucklandMedianCents, 0, 100_000_000),
+    marketDifferenceCents: parseOptionalInteger(item.marketDifferenceCents, -100_000_000, 100_000_000),
+    marketDifferencePercent: parseOptionalNumber(item.marketDifferencePercent),
+    marketRelation: cleanString(item.marketRelation, 40),
+    marketVerdict: cleanString(item.marketVerdict, 60),
+    marketConfidence: cleanString(item.marketConfidence, 30),
+    marketReason: cleanString(item.marketReason, 4_000),
+    marketTargetSellCents: parseOptionalInteger(item.marketTargetSellCents, -100_000_000, 100_000_000),
+    marketMaxBuyCents: parseOptionalInteger(item.marketMaxBuyCents, -100_000_000, 100_000_000),
+    marketExpectedSpreadCents: parseOptionalInteger(item.marketExpectedSpreadCents, -100_000_000, 100_000_000),
+    marketSourcesAttempted: parseOptionalInteger(item.marketSourcesAttempted, 0, 10_000) ?? 0,
+    marketSourcesSuccessful: parseOptionalInteger(item.marketSourcesSuccessful, 0, 10_000) ?? 0,
+    marketSourceBreakdownJson: cleanString(item.marketSourceBreakdownJson, 100_000),
+    marketComparablesJson: cleanString(item.marketComparablesJson, 1_000_000),
+    marketValuedAt: parseDate(item.marketValuedAt),
+    marketValuationRunId: cleanString(item.marketValuationRunId, 100),
     availabilityStatus,
     availabilityConfidence,
     availabilityReason: cleanString(item.availabilityReason, 500),
@@ -294,6 +356,34 @@ export async function POST(request: Request) {
           extractedYear: item.extractedYear,
           make: item.make,
           model: item.model,
+          variant: item.variant,
+          kms: item.kms,
+          transmission: item.transmission,
+          fuelType: item.fuelType,
+          bodyType: item.bodyType,
+          region: item.region,
+          marketValuationStatus: item.marketValuationStatus,
+          marketValuationError: item.marketValuationError,
+          marketValueCents: item.marketValueCents,
+          marketComparableCount: item.marketComparableCount,
+          marketLowestComparableCents: item.marketLowestComparableCents,
+          marketHighestComparableCents: item.marketHighestComparableCents,
+          marketAucklandMedianCents: item.marketAucklandMedianCents,
+          marketDifferenceCents: item.marketDifferenceCents,
+          marketDifferencePercent: item.marketDifferencePercent,
+          marketRelation: item.marketRelation,
+          marketVerdict: item.marketVerdict,
+          marketConfidence: item.marketConfidence,
+          marketReason: item.marketReason,
+          marketTargetSellCents: item.marketTargetSellCents,
+          marketMaxBuyCents: item.marketMaxBuyCents,
+          marketExpectedSpreadCents: item.marketExpectedSpreadCents,
+          marketSourcesAttempted: item.marketSourcesAttempted,
+          marketSourcesSuccessful: item.marketSourcesSuccessful,
+          marketSourceBreakdownJson: item.marketSourceBreakdownJson,
+          marketComparablesJson: item.marketComparablesJson,
+          marketValuedAt: item.marketValuedAt,
+          marketValuationRunId: item.marketValuationRunId,
           availabilityStatus: item.availabilityStatus,
           availabilityConfidence: item.availabilityConfidence,
           availabilityReason: item.availabilityReason,
@@ -311,6 +401,34 @@ export async function POST(request: Request) {
           extractedYear: item.extractedYear,
           make: item.make,
           model: item.model,
+          variant: item.variant,
+          kms: item.kms,
+          transmission: item.transmission,
+          fuelType: item.fuelType,
+          bodyType: item.bodyType,
+          region: item.region,
+          marketValuationStatus: item.marketValuationStatus,
+          marketValuationError: item.marketValuationError,
+          marketValueCents: item.marketValueCents,
+          marketComparableCount: item.marketComparableCount,
+          marketLowestComparableCents: item.marketLowestComparableCents,
+          marketHighestComparableCents: item.marketHighestComparableCents,
+          marketAucklandMedianCents: item.marketAucklandMedianCents,
+          marketDifferenceCents: item.marketDifferenceCents,
+          marketDifferencePercent: item.marketDifferencePercent,
+          marketRelation: item.marketRelation,
+          marketVerdict: item.marketVerdict,
+          marketConfidence: item.marketConfidence,
+          marketReason: item.marketReason,
+          marketTargetSellCents: item.marketTargetSellCents,
+          marketMaxBuyCents: item.marketMaxBuyCents,
+          marketExpectedSpreadCents: item.marketExpectedSpreadCents,
+          marketSourcesAttempted: item.marketSourcesAttempted,
+          marketSourcesSuccessful: item.marketSourcesSuccessful,
+          marketSourceBreakdownJson: item.marketSourceBreakdownJson,
+          marketComparablesJson: item.marketComparablesJson,
+          marketValuedAt: item.marketValuedAt,
+          marketValuationRunId: item.marketValuationRunId,
           availabilityStatus: item.availabilityStatus,
           availabilityConfidence: item.availabilityConfidence,
           availabilityReason: item.availabilityReason,

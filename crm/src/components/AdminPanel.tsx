@@ -3,6 +3,7 @@
 import {
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
   useEffect,
   useMemo,
   useState
@@ -185,6 +186,60 @@ const statusTone: Record<FlipStatus, string> = {
   PASSED: "bg-slate-100 text-slate-700"
 };
 
+const workflowConfig: Record<
+  FlipStatus,
+  {
+    accent: string;
+    description: string;
+    eyebrow: string;
+    headerTone: string;
+    title: string;
+  }
+> = {
+  WATCHING: {
+    accent: "border-l-sky-400",
+    description: "Qualify the opportunity, contact the seller, and decide whether the numbers justify a purchase.",
+    eyebrow: "Acquisition",
+    headerTone: "border-sky-200 bg-sky-50 text-sky-950",
+    title: "Lead assessment"
+  },
+  BOUGHT: {
+    accent: "border-l-violet-400",
+    description: "The purchase is complete. Record the true buy price and plan the work needed before sale.",
+    eyebrow: "Owned stock",
+    headerTone: "border-violet-200 bg-violet-50 text-violet-950",
+    title: "Acquisition record"
+  },
+  IN_REPAIR: {
+    accent: "border-l-amber-400",
+    description: "Track preparation spend and the next job without the noise of seller-contact fields.",
+    eyebrow: "Workshop",
+    headerTone: "border-amber-200 bg-amber-50 text-amber-950",
+    title: "Repair and preparation"
+  },
+  LISTED: {
+    accent: "border-l-cyan-400",
+    description: "Manage the sale campaign, advertised price, listing link, and next buyer follow-up.",
+    eyebrow: "For sale",
+    headerTone: "border-cyan-200 bg-cyan-50 text-cyan-950",
+    title: "Sale campaign"
+  },
+  SOLD: {
+    accent: "border-l-emerald-400",
+    description: "Review the final result and preserve the lessons that should improve the next flip.",
+    eyebrow: "Completed",
+    headerTone: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    title: "Completed flip"
+  },
+  PASSED: {
+    accent: "border-l-slate-300",
+    description: "Keep only the useful reference numbers and the reason this opportunity was closed.",
+    eyebrow: "Closed lead",
+    headerTone: "border-slate-200 bg-slate-50 text-slate-950",
+    title: "Decision record"
+  }
+};
+
 const priorityTone: Record<AdminPriority, string> = {
   LOW: "bg-slate-100 text-slate-700",
   MEDIUM: "bg-amber-100 text-amber-800",
@@ -218,6 +273,21 @@ const nzDateFormatter = new Intl.DateTimeFormat("en-NZ", {
   timeStyle: "short",
   timeZone: "Pacific/Auckland"
 });
+
+const nzDayFormatter = new Intl.DateTimeFormat("en-NZ", {
+  dateStyle: "medium",
+  timeZone: "Pacific/Auckland"
+});
+
+const statusOptions = flipStatuses.map((status) => ({
+  label: flipStatusLabels[status],
+  value: status
+}));
+
+const priorityOptions = adminPriorities.map((priority) => ({
+  label: adminPriorityLabels[priority],
+  value: priority
+}));
 
 function draftForMode(mode: AddMode): DraftState {
   const config = addModes[mode];
@@ -284,6 +354,10 @@ function profit(flip: AdminFlipView) {
 
 function updatedLabel(value: string) {
   return nzDateFormatter.format(new Date(value));
+}
+
+function dayLabel(value: string | null) {
+  return value ? nzDayFormatter.format(new Date(value)) : "Not logged";
 }
 
 function buildPayload(draft: DraftState) {
@@ -594,80 +668,547 @@ function PhotoPreview({
   );
 }
 
-function adminDealProfitTone(value: number | null) {
-  if (value == null) {
-    return "text-slate-500";
-  }
+type SnapshotMetric = {
+  label: string;
+  tone?: "default" | "good" | "muted" | "warning";
+  value: string;
+};
 
-  return value >= 0 ? "text-emerald-700" : "text-rose-700";
+function loggedMoney(value: number | null | undefined, fallback = "Not logged") {
+  return value != null && value > 0 ? formatMoney(value) : fallback;
 }
 
-function MoneySnapshot({ flip }: { flip: AdminFlipView }) {
-  const flipProfit = profit(flip);
-  const cost = totalCost(flip);
+function calculatedMoney(
+  value: number | null | undefined,
+  fallback = "Not ready"
+) {
+  return value == null ? fallback : formatMoney(value);
+}
+
+function WorkflowSnapshot({ flip }: { flip: AdminFlipView }) {
+  const runningCosts = flip.repairCostCents + flip.otherCostCents;
+  const invested = totalCost(flip);
+  const targetSale = flip.targetSellPriceCents ?? flip.valuationCents;
+  const projectedProfit =
+    targetSale != null && flip.purchasePriceCents > 0
+      ? targetSale - invested
+      : null;
+  const realizedProfit = profit(flip);
+  const expectedSale = flip.salePriceCents ?? targetSale;
+  const listedProfit =
+    expectedSale != null && flip.purchasePriceCents > 0
+      ? expectedSale - invested
+      : null;
+  const roi =
+    realizedProfit != null && invested > 0
+      ? `${Math.round((realizedProfit / invested) * 100)}%`
+      : "Pending";
+
+  const metrics: Record<FlipStatus, SnapshotMetric[]> = {
+    WATCHING: [
+      { label: "Asking", value: loggedMoney(flip.askingPriceCents) },
+      { label: "Market value", value: loggedMoney(flip.valuationCents) },
+      { label: "Buy ceiling", value: loggedMoney(flip.maxBuyPriceCents) },
+      {
+        label: "Expected margin",
+        tone:
+          flip.estimatedProfitCents == null
+            ? "muted"
+            : flip.estimatedProfitCents >= 0
+              ? "good"
+              : "warning",
+        value: calculatedMoney(flip.estimatedProfitCents)
+      }
+    ],
+    BOUGHT: [
+      { label: "Purchase price", value: loggedMoney(flip.purchasePriceCents) },
+      { label: "Added costs", value: formatMoney(runningCosts) },
+      { label: "Total invested", value: loggedMoney(invested) },
+      {
+        label: "Projected profit",
+        tone:
+          projectedProfit == null
+            ? "muted"
+            : projectedProfit >= 0
+              ? "good"
+              : "warning",
+        value: calculatedMoney(projectedProfit, "Set purchase price")
+      }
+    ],
+    IN_REPAIR: [
+      { label: "Purchase price", value: loggedMoney(flip.purchasePriceCents) },
+      { label: "Repair spend", value: formatMoney(flip.repairCostCents) },
+      { label: "Other costs", value: formatMoney(flip.otherCostCents) },
+      { label: "Total invested", value: loggedMoney(invested) },
+      {
+        label: "Target headroom",
+        tone:
+          projectedProfit == null
+            ? "muted"
+            : projectedProfit >= 0
+              ? "good"
+              : "warning",
+        value: calculatedMoney(projectedProfit, "Set target")
+      }
+    ],
+    LISTED: [
+      { label: "Total invested", value: loggedMoney(invested) },
+      { label: "Target sale", value: loggedMoney(targetSale) },
+      { label: "Advertised price", value: loggedMoney(flip.salePriceCents) },
+      {
+        label: "Projected profit",
+        tone:
+          listedProfit == null
+            ? "muted"
+            : listedProfit >= 0
+              ? "good"
+              : "warning",
+        value: calculatedMoney(listedProfit, "Set sale price")
+      }
+    ],
+    SOLD: [
+      { label: "Purchase price", value: loggedMoney(flip.purchasePriceCents) },
+      { label: "Added costs", value: formatMoney(runningCosts) },
+      { label: "Total cost", value: loggedMoney(invested) },
+      { label: "Sale price", value: loggedMoney(flip.salePriceCents) },
+      {
+        label: "Realized profit",
+        tone:
+          realizedProfit == null
+            ? "muted"
+            : realizedProfit >= 0
+              ? "good"
+              : "warning",
+        value: calculatedMoney(realizedProfit, "Not complete")
+      },
+      {
+        label: "ROI",
+        tone:
+          realizedProfit == null
+            ? "muted"
+            : realizedProfit >= 0
+              ? "good"
+              : "warning",
+        value: roi
+      }
+    ],
+    PASSED: [
+      { label: "Asking", value: loggedMoney(flip.askingPriceCents) },
+      { label: "Market value", value: loggedMoney(flip.valuationCents) },
+      { label: "Decision", tone: "muted", value: "Opportunity closed" }
+    ]
+  };
+
+  const valueTone = {
+    default: "text-slate-950",
+    good: "text-emerald-700",
+    muted: "text-slate-500",
+    warning: "text-rose-700"
+  };
 
   return (
-    <div className="grid grid-cols-2 gap-2 rounded-3xl bg-slate-50 p-3 text-sm md:grid-cols-4 xl:min-w-[42rem]">
+    <div className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 rounded-3xl bg-slate-50 p-4 text-sm md:grid-cols-3 xl:min-w-[38rem] xl:grid-cols-4">
+      {metrics[flip.status].map((metric) => (
+        <div className="min-w-0" key={metric.label}>
+          <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
+            {metric.label}
+          </p>
+          <p
+            className={`mt-1 truncate font-bold ${valueTone[metric.tone ?? "default"]}`}
+            title={metric.value}
+          >
+            {metric.value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FormSection({
+  children,
+  description,
+  title
+}: {
+  children: ReactNode;
+  description?: string;
+  title: string;
+}) {
+  return (
+    <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
       <div>
-        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-          Asking
-        </p>
-        <p className="mt-1 font-bold">{formatMoney(flip.askingPriceCents)}</p>
+        <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-600">
+          {title}
+        </h4>
+        {description ? (
+          <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+        ) : null}
       </div>
-      <div>
-        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-          Value
-        </p>
-        <p className="mt-1 font-bold">{formatMoney(flip.valuationCents)}</p>
+      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {children}
       </div>
-      <div>
-        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-          Max buy
-        </p>
-        <p className="mt-1 font-bold">{formatMoney(flip.maxBuyPriceCents)}</p>
+    </section>
+  );
+}
+
+function WorkflowEditor({
+  draft,
+  onChange
+}: {
+  draft: DraftState;
+  onChange: (name: keyof DraftState, value: string | boolean) => void;
+}) {
+  const config = workflowConfig[draft.status];
+  const fieldChange = (name: keyof DraftState, value: string) =>
+    onChange(name, value);
+
+  return (
+    <div className="grid gap-5">
+      <div
+        className={`grid gap-4 rounded-[1.5rem] border p-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-end ${config.headerTone}`}
+      >
+        <div>
+          <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] opacity-65">
+            {config.eyebrow}
+          </p>
+          <h4 className="mt-1 text-2xl font-semibold tracking-tight">
+            {config.title}
+          </h4>
+          <p className="mt-1 max-w-2xl text-sm leading-6 opacity-75">
+            {config.description}
+          </p>
+        </div>
+        <SelectField
+          label="Workflow status"
+          onChange={(value) => onChange("status", value)}
+          options={statusOptions}
+          value={draft.status}
+        />
       </div>
-      <div>
-        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-          Margin
-        </p>
-        <p
-          className={`mt-1 font-bold ${adminDealProfitTone(
-            flip.estimatedProfitCents
-          )}`}
+
+      <FormSection
+        description="Core vehicle details stay available at every stage."
+        title="Vehicle record"
+      >
+        <Field
+          label="Vehicle"
+          name="vehicleTitle"
+          onChange={fieldChange}
+          required
+          value={draft.vehicleTitle}
+        />
+        <Field
+          label="KMs"
+          name="kms"
+          onChange={fieldChange}
+          value={draft.kms}
+        />
+        <Field
+          label="Rego"
+          name="rego"
+          onChange={fieldChange}
+          value={draft.rego}
+        />
+      </FormSection>
+
+      {draft.status === "WATCHING" ? (
+        <FormSection
+          description="Only the information needed to decide whether this car is worth buying."
+          title="Lead assessment"
         >
-          {formatMoney(flip.estimatedProfitCents)}
-        </p>
-      </div>
-      <div>
-        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-          Cost
-        </p>
-        <p className="mt-1 font-bold">{formatMoney(cost)}</p>
-      </div>
-      <div>
-        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-          Sold
-        </p>
-        <p className="mt-1 font-bold">
-          {flip.salePriceCents == null ? "Pending" : formatMoney(flip.salePriceCents)}
-        </p>
-      </div>
-      <div>
-        <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-slate-400">
-          Profit
-        </p>
-        <p
-          className={`mt-1 font-bold ${
-            flipProfit == null
-              ? "text-slate-500"
-              : flipProfit >= 0
-                ? "text-emerald-700"
-                : "text-rose-700"
-          }`}
+          <Field
+            label="Source URL"
+            name="sourceUrl"
+            onChange={fieldChange}
+            value={draft.sourceUrl}
+          />
+          <Field
+            label="Asking $"
+            name="askingPrice"
+            onChange={fieldChange}
+            value={draft.askingPrice}
+          />
+          <Field
+            label="Trade Me value"
+            name="valuation"
+            onChange={fieldChange}
+            value={draft.valuation}
+          />
+          <SelectField
+            label="Priority"
+            onChange={(value) => onChange("priority", value)}
+            options={priorityOptions}
+            value={draft.priority}
+          />
+          <label className="flex min-h-[4.15rem] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
+            <input
+              checked={draft.sellerContacted}
+              className="h-4 w-4"
+              onChange={(event) =>
+                onChange("sellerContacted", event.target.checked)
+              }
+              type="checkbox"
+            />
+            Contacted seller
+          </label>
+          <Field
+            label="Contacted date"
+            name="sellerContactedAt"
+            onChange={fieldChange}
+            type="date"
+            value={draft.sellerContactedAt}
+          />
+          <Field
+            label="Next action"
+            name="nextAction"
+            onChange={fieldChange}
+            value={draft.nextAction}
+          />
+        </FormSection>
+      ) : null}
+
+      {draft.status === "BOUGHT" ? (
+        <FormSection
+          description="The asking price is history now; this is the actual acquisition record."
+          title="Purchase"
         >
-          {flipProfit == null ? "Pending" : formatMoney(flipProfit)}
-        </p>
-      </div>
+          <Field
+            label="Purchase date"
+            name="purchaseDate"
+            onChange={fieldChange}
+            type="date"
+            value={draft.purchaseDate}
+          />
+          <Field
+            label="Purchase $"
+            name="purchasePrice"
+            onChange={fieldChange}
+            value={draft.purchasePrice}
+          />
+          <Field
+            label="Next action"
+            name="nextAction"
+            onChange={fieldChange}
+            placeholder="Inspection, registration, workshop booking..."
+            value={draft.nextAction}
+          />
+        </FormSection>
+      ) : null}
+
+      {draft.status === "IN_REPAIR" ? (
+        <>
+          <FormSection title="Cost basis">
+            <Field
+              label="Purchase date"
+              name="purchaseDate"
+              onChange={fieldChange}
+              type="date"
+              value={draft.purchaseDate}
+            />
+            <Field
+              label="Purchase $"
+              name="purchasePrice"
+              onChange={fieldChange}
+              value={draft.purchasePrice}
+            />
+          </FormSection>
+          <FormSection
+            description="Keep the current spend and the next workshop task together."
+            title="Repair and preparation"
+          >
+            <Field
+              label="Repair $"
+              name="repairCost"
+              onChange={fieldChange}
+              value={draft.repairCost}
+            />
+            <Field
+              label="Other $"
+              name="otherCost"
+              onChange={fieldChange}
+              value={draft.otherCost}
+            />
+            <Field
+              label="Next action"
+              name="nextAction"
+              onChange={fieldChange}
+              placeholder="WOF, parts, paint, detail..."
+              value={draft.nextAction}
+            />
+          </FormSection>
+        </>
+      ) : null}
+
+      {draft.status === "LISTED" ? (
+        <>
+          <FormSection title="Investment">
+            <Field
+              label="Purchase $"
+              name="purchasePrice"
+              onChange={fieldChange}
+              value={draft.purchasePrice}
+            />
+            <Field
+              label="Repair $"
+              name="repairCost"
+              onChange={fieldChange}
+              value={draft.repairCost}
+            />
+            <Field
+              label="Other $"
+              name="otherCost"
+              onChange={fieldChange}
+              value={draft.otherCost}
+            />
+          </FormSection>
+          <FormSection
+            description="Track the live advert and the price buyers currently see."
+            title="Sale campaign"
+          >
+            <Field
+              label="Sale listing URL"
+              name="sourceUrl"
+              onChange={fieldChange}
+              value={draft.sourceUrl}
+            />
+            <Field
+              label="Advertised $"
+              name="salePrice"
+              onChange={fieldChange}
+              value={draft.salePrice}
+            />
+            <Field
+              label="Next action"
+              name="nextAction"
+              onChange={fieldChange}
+              placeholder="Follow up buyer, refresh advert, adjust price..."
+              value={draft.nextAction}
+            />
+          </FormSection>
+        </>
+      ) : null}
+
+      {draft.status === "SOLD" ? (
+        <>
+          <FormSection title="Final cost basis">
+            <Field
+              label="Purchase date"
+              name="purchaseDate"
+              onChange={fieldChange}
+              type="date"
+              value={draft.purchaseDate}
+            />
+            <Field
+              label="Purchase $"
+              name="purchasePrice"
+              onChange={fieldChange}
+              value={draft.purchasePrice}
+            />
+            <Field
+              label="Repair $"
+              name="repairCost"
+              onChange={fieldChange}
+              value={draft.repairCost}
+            />
+            <Field
+              label="Other $"
+              name="otherCost"
+              onChange={fieldChange}
+              value={draft.otherCost}
+            />
+          </FormSection>
+          <FormSection
+            description="These figures drive realized profit and ROI in the summary above."
+            title="Sale result"
+          >
+            <Field
+              label="Sale date"
+              name="saleDate"
+              onChange={fieldChange}
+              type="date"
+              value={draft.saleDate}
+            />
+            <Field
+              label="Sale $"
+              name="salePrice"
+              onChange={fieldChange}
+              value={draft.salePrice}
+            />
+          </FormSection>
+        </>
+      ) : null}
+
+      {draft.status === "PASSED" ? (
+        <FormSection
+          description="Keep enough context to avoid repeating the same dead-end research."
+          title="Reference"
+        >
+          <Field
+            label="Source URL"
+            name="sourceUrl"
+            onChange={fieldChange}
+            value={draft.sourceUrl}
+          />
+          <Field
+            label="Asking $"
+            name="askingPrice"
+            onChange={fieldChange}
+            value={draft.askingPrice}
+          />
+          <Field
+            label="Trade Me value"
+            name="valuation"
+            onChange={fieldChange}
+            value={draft.valuation}
+          />
+        </FormSection>
+      ) : null}
+
+      <FormSection
+        description={
+          draft.status === "SOLD"
+            ? "Close the loop with a concise record of what the deal taught you."
+            : "Keep operational detail here without cluttering the status summary."
+        }
+        title={draft.status === "SOLD" ? "Review and journal" : "Working notes"}
+      >
+        <TextAreaField
+          label={draft.status === "PASSED" ? "Why you passed" : "Admin notes"}
+          name="notes"
+          onChange={fieldChange}
+          placeholder={
+            draft.status === "PASSED"
+              ? "Price, condition, seller, location, or risk that ended the opportunity..."
+              : "Checks, reminders, parts, buyers, or other operational details..."
+          }
+          value={draft.notes}
+        />
+        {draft.status === "SOLD" ? (
+          <>
+            <TextAreaField
+              label="What went right"
+              name="journalWentRight"
+              onChange={fieldChange}
+              placeholder="Good buy reason, negotiation win, repair that paid off..."
+              value={draft.journalWentRight}
+            />
+            <TextAreaField
+              label="What went wrong"
+              name="journalWentWrong"
+              onChange={fieldChange}
+              placeholder="Hidden cost, slow sale reason, inspection miss..."
+              value={draft.journalWentWrong}
+            />
+            <TextAreaField
+              label="Look out for next time"
+              name="journalLookOutFor"
+              onChange={fieldChange}
+              placeholder="Model issues, seller red flags, price ceiling lesson..."
+              value={draft.journalLookOutFor}
+            />
+          </>
+        ) : null}
+      </FormSection>
     </div>
   );
 }
@@ -714,14 +1255,6 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
     [flips]
   );
 
-  const statusOptions = flipStatuses.map((status) => ({
-    label: flipStatusLabels[status],
-    value: status
-  }));
-  const priorityOptions = adminPriorities.map((priority) => ({
-    label: adminPriorityLabels[priority],
-    value: priority
-  }));
   const groupedSections = useMemo(
     () =>
       adminGroups.map((group) => ({
@@ -1281,7 +1814,7 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
 
                         return (
                           <article
-                            className="overflow-hidden rounded-[2rem] border border-slate-100 bg-white/95 shadow-lg shadow-slate-200/60"
+                            className={`overflow-hidden rounded-[2rem] border border-l-4 border-slate-100 bg-white/95 shadow-lg shadow-slate-200/60 ${workflowConfig[flip.status].accent}`}
                             key={flip.id}
                           >
                 <div className="grid gap-4 p-4 md:grid-cols-[9rem_minmax(0,1fr)] xl:grid-cols-[9rem_minmax(0,1fr)_auto_auto] xl:items-center">
@@ -1296,21 +1829,26 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
                       >
                         {flipStatusLabels[flip.status]}
                       </span>
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-bold ${priorityTone[flip.priority]}`}
-                      >
-                        {adminPriorityLabels[flip.priority]} priority
-                      </span>
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-bold ${
-                          flip.sellerContacted
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {flip.sellerContacted ? "Contacted" : "Not contacted"}
-                      </span>
-                      {flip.listingAvailabilityStatus &&
+                      {flip.status === "WATCHING" ? (
+                        <>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${priorityTone[flip.priority]}`}
+                          >
+                            {adminPriorityLabels[flip.priority]} priority
+                          </span>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${
+                              flip.sellerContacted
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {flip.sellerContacted ? "Contacted" : "Not contacted"}
+                          </span>
+                        </>
+                      ) : null}
+                      {(flip.status === "WATCHING" || flip.status === "PASSED") &&
+                      flip.listingAvailabilityStatus &&
                       flip.listingAvailabilityStatus !== "ACTIVE" ? (
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-bold ${
@@ -1337,10 +1875,29 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
                           : "Unknown"}
                       </span>
                       <span>Rego {flip.rego ?? "Unknown"}</span>
-                      <span>Next: {flip.nextAction ?? "No next action"}</span>
+                      {flip.status === "WATCHING" ? (
+                        <span>Next: {flip.nextAction ?? "No next action"}</span>
+                      ) : null}
+                      {flip.status === "BOUGHT" ||
+                      flip.status === "IN_REPAIR" ||
+                      flip.status === "LISTED" ||
+                      flip.status === "SOLD" ? (
+                        <span>Purchased {dayLabel(flip.purchaseDate)}</span>
+                      ) : null}
+                      {flip.status === "BOUGHT" ||
+                      flip.status === "IN_REPAIR" ||
+                      flip.status === "LISTED" ? (
+                        <span>Next: {flip.nextAction ?? "No next action"}</span>
+                      ) : null}
+                      {flip.status === "SOLD" ? (
+                        <span>Sold {dayLabel(flip.saleDate)}</span>
+                      ) : null}
+                      {flip.status === "PASSED" ? (
+                        <span>Closed for reference</span>
+                      ) : null}
                     </div>
                   </div>
-                  <MoneySnapshot flip={flip} />
+                  <WorkflowSnapshot flip={flip} />
                   <button
                     aria-controls={panelId}
                     aria-expanded={isExpanded}
@@ -1359,230 +1916,12 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
                 {isExpanded ? (
                   <div className="border-t border-slate-100 p-5" id={panelId}>
                     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-                      <div className="grid gap-5">
-                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                            Lead
-                          </h4>
-                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            <Field
-                              label="Vehicle"
-                              name="vehicleTitle"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              required
-                              value={draft.vehicleTitle}
-                            />
-                            <SelectField
-                              label="Status"
-                              onChange={(value) =>
-                                updateDraft(flip.id, "status", value)
-                              }
-                              options={statusOptions}
-                              value={draft.status}
-                            />
-                            <Field
-                              label="Source URL"
-                              name="sourceUrl"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.sourceUrl}
-                            />
-                            <Field
-                              label="Asking $"
-                              name="askingPrice"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.askingPrice}
-                            />
-                            <Field
-                              label="Trade Me value"
-                              name="valuation"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.valuation}
-                            />
-                            <Field
-                              label="KMs"
-                              name="kms"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.kms}
-                            />
-                            <Field
-                              label="Rego"
-                              name="rego"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.rego}
-                            />
-                            <SelectField
-                              label="Priority"
-                              onChange={(value) =>
-                                updateDraft(flip.id, "priority", value)
-                              }
-                              options={priorityOptions}
-                              value={draft.priority}
-                            />
-                            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
-                              <input
-                                checked={draft.sellerContacted}
-                                className="h-4 w-4"
-                                onChange={(event) =>
-                                  updateDraft(
-                                    flip.id,
-                                    "sellerContacted",
-                                    event.target.checked
-                                  )
-                                }
-                                type="checkbox"
-                              />
-                              Contacted seller
-                            </label>
-                            <Field
-                              label="Contacted date"
-                              name="sellerContactedAt"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              type="date"
-                              value={draft.sellerContactedAt}
-                            />
-                            <Field
-                              label="Next action"
-                              name="nextAction"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.nextAction}
-                            />
-                          </div>
-                        </section>
-
-                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                            Purchase
-                          </h4>
-                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            <Field
-                              label="Purchase date"
-                              name="purchaseDate"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              type="date"
-                              value={draft.purchaseDate}
-                            />
-                            <Field
-                              label="Purchase $"
-                              name="purchasePrice"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.purchasePrice}
-                            />
-                          </div>
-                        </section>
-
-                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                            Costs
-                          </h4>
-                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            <Field
-                              label="Repair $"
-                              name="repairCost"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.repairCost}
-                            />
-                            <Field
-                              label="Other $"
-                              name="otherCost"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.otherCost}
-                            />
-                          </div>
-                        </section>
-
-                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                            Sale
-                          </h4>
-                          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            <Field
-                              label="Sale date"
-                              name="saleDate"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              type="date"
-                              value={draft.saleDate}
-                            />
-                            <Field
-                              label="Sale $"
-                              name="salePrice"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              value={draft.salePrice}
-                            />
-                          </div>
-                        </section>
-
-                        <section className="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
-                          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                            Journal
-                          </h4>
-                          <div className="mt-4 grid gap-4 xl:grid-cols-4">
-                            <TextAreaField
-                              label="Admin notes"
-                              name="notes"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              placeholder="Seller details, pickup plan, what needs checking..."
-                              value={draft.notes}
-                            />
-                            <TextAreaField
-                              label="What went right"
-                              name="journalWentRight"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              placeholder="Good buy reason, negotiation win, repair that paid off..."
-                              value={draft.journalWentRight}
-                            />
-                            <TextAreaField
-                              label="What went wrong"
-                              name="journalWentWrong"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              placeholder="Hidden cost, slow sale reason, inspection miss..."
-                              value={draft.journalWentWrong}
-                            />
-                            <TextAreaField
-                              label="Look out for next time"
-                              name="journalLookOutFor"
-                              onChange={(name, value) =>
-                                updateDraft(flip.id, name, value)
-                              }
-                              placeholder="Model issues, seller red flags, price ceiling lesson..."
-                              value={draft.journalLookOutFor}
-                            />
-                          </div>
-                        </section>
-                      </div>
+                      <WorkflowEditor
+                        draft={draft}
+                        onChange={(name, value) =>
+                          updateDraft(flip.id, name, value)
+                        }
+                      />
 
                       <div className="grid content-start gap-4">
                         <PhotoField
@@ -1596,7 +1935,9 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
                           <p className="text-sm text-slate-500">
                             Updated {updatedLabel(flip.updatedAt)}
                           </p>
-                          {flip.listingAvailabilityStatus &&
+                          {(draft.status === "WATCHING" ||
+                            draft.status === "PASSED") &&
+                          flip.listingAvailabilityStatus &&
                           flip.listingAvailabilityStatus !== "ACTIVE" ? (
                             <p className="mt-2 text-sm text-slate-500">
                               Marketplace status:{" "}
@@ -1607,14 +1948,19 @@ export function AdminPanel({ flips, stats }: AdminPanelProps) {
                               </strong>
                             </p>
                           ) : null}
-                          {flip.sourceUrl ? (
+                          {draft.sourceUrl &&
+                          (draft.status === "WATCHING" ||
+                            draft.status === "LISTED" ||
+                            draft.status === "PASSED") ? (
                             <a
                               className="mt-3 inline-flex rounded-2xl bg-cyan-100 px-4 py-3 text-sm font-bold text-cyan-800 transition hover:bg-cyan-200"
-                              href={flip.sourceUrl}
+                              href={draft.sourceUrl}
                               rel="noreferrer"
                               target="_blank"
                             >
-                              Open source listing
+                              {draft.status === "LISTED"
+                                ? "Open sale listing"
+                                : "Open source listing"}
                             </a>
                           ) : null}
                         </div>

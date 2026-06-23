@@ -1,5 +1,6 @@
 import { AppNav } from "@/components/AppNav";
 import { AdminPanel, type AdminFlipView } from "@/components/AdminPanel";
+import { MarketValuationQueue } from "@/components/MarketValuationQueue";
 import { getAdminData } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export default async function AdminPage() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ede9fe,_transparent_32rem),radial-gradient(circle_at_top_right,_#cffafe,_transparent_30rem),linear-gradient(180deg,_#f8fafc,_#eef2ff)] px-4 py-8 text-slate-950 md:px-6">
       <main className="mx-auto max-w-[95rem]">
         <AppNav active="admin" />
+        <MarketValuationQueue />
         <AdminPanel
           flips={data.flips.map(serializeFlip)}
           stats={data.stats}

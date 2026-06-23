@@ -35,7 +35,34 @@ model Listing {
   extractedYear        Int?
   make                 String?
   model                String?
+  variant              String?
   kms                  Int?
+  transmission         String?
+  fuelType             String?
+  bodyType             String?
+  region               String?
+  marketValuationStatus String       @default("NOT_STARTED")
+  marketValuationError String?
+  marketValueCents     Int?
+  marketComparableCount Int          @default(0)
+  marketLowestComparableCents Int?
+  marketHighestComparableCents Int?
+  marketAucklandMedianCents Int?
+  marketDifferenceCents Int?
+  marketDifferencePercent Float?
+  marketRelation       String?
+  marketVerdict        String?
+  marketConfidence     String?
+  marketReason         String?
+  marketTargetSellCents Int?
+  marketMaxBuyCents    Int?
+  marketExpectedSpreadCents Int?
+  marketSourcesAttempted Int         @default(0)
+  marketSourcesSuccessful Int        @default(0)
+  marketSourceBreakdownJson String?
+  marketComparablesJson String?
+  marketValuedAt       DateTime?
+  marketValuationRunId String?
   aiSummary            String?
   dealScore            Int?
   riskLevel            String        @default("UNKNOWN")
@@ -75,6 +102,9 @@ model Listing {
   @@index([researchStatus])
   @@index([availabilityStatus])
   @@index([lastCheckedAt])
+  @@index([marketValuationStatus])
+  @@index([marketVerdict])
+  @@index([marketValuedAt])
 }
 
 model AdminFlip {

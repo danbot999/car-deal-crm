@@ -1,4 +1,4 @@
-"""Upgrade the local n8n Marketplace workflow to fail-open availability sync."""
+"""Upgrade the local n8n workflow to accept verified active passenger cars only."""
 
 from __future__ import annotations
 
@@ -43,9 +43,10 @@ const now = new Date().toISOString();
 const seenInPayload = new Set();
 const output = [];
 
-const excludedTitlePattern = /\b(go[\s-]?kart|kart|mini[\s-]?bike|minibike|motorbike|motorcycle|scooter|trailer|boat|jet\s*ski|quad\s*bike|atv|utv|tyres?|tires?|wheels?|rims?|mags?|parts?|wrecking|dismantling|bumper|gearbox|transmission|headlight|tail\s*light|seat\s*covers?)\b/i;
+const excludedTitlePattern = /\b(go[\s-]?kart|kart|mini[\s-]?bike|minibike|motorbike|motorcycle|scooter|trailer|boat|jet\s*ski|quad\s*bike|atv|utv|bus|coach|school\s*bus|tour\s*bus|mini[\s-]?bus|motorhome|camper(?:van)?|caravan|rv|commercial\s*truck|box\s*truck|flat[\s-]?deck|tipper|tractor\s*unit|lorry|isuzu\s+gala|mitsubishi\s+rosa|toyota\s+coaster|tyres?|tires?|wheels?|rims?|mags?|parts?|wrecking|dismantling|canopy|bumper|gearbox|transmission|headlight|tail\s*light|seat\s*covers?)\b/i;
 const financeOnlyPattern = /(\$\s*\d[\d,]*(?:\.\d{1,2})?\s*(?:per|\/)\s*(?:week|wk)|\b(?:per week|weekly payments?|from\s+\$\s*\d[\d,]*\s*\/?\s*(?:week|wk))\b)/i;
-const excludedCategories = ['powersport', 'motorcycle', 'motorbike', 'scooter', 'trailer', 'boat', 'bicycle', 'bike', 'parts', 'wheels', 'tyres', 'tires'];
+const excludedCategories = ['powersport', 'motorcycle', 'motorbike', 'scooter', 'rvs & campers', 'rvs and campers', 'rv & camper', 'commercial truck', 'bus', 'coach', 'trailer', 'boat', 'bicycle', 'bike', 'parts', 'wheels', 'tyres', 'tires'];
+const allowedCategories = ['cars & trucks', 'cars and trucks'];
 const hardRejectionReasons = new Set(['excluded_category', 'excluded_vehicle_type', 'finance_only']);
 const validStatuses = new Set(['ACTIVE', 'NEEDS_REVIEW', 'POSSIBLY_SOLD', 'CONFIRMED_SOLD', 'UNAVAILABLE', 'EXPIRED', 'UNKNOWN']);
 const validConfidence = new Set(['HIGH', 'MEDIUM', 'LOW']);
@@ -94,7 +95,14 @@ for (const listing of listings) {
   const reason = clean(listing?.filterReason ?? listing?.rejection_reason);
 
   const categoryExcluded = excludedCategories.some((value) => categoryLower.includes(value));
+  const categoryAllowed = allowedCategories.some((value) => categoryLower.includes(value));
   const financeOnly = price < 1000 && financeOnlyPattern.test(`${title} ${reason}`);
+  const availabilityStatus = normalizeStatus(listing);
+  const strictActiveCar =
+    availabilityStatus === 'ACTIVE' &&
+    listing?.verified === true &&
+    listing?.available === true &&
+    listing?.in_scope === true;
   const hardReject =
     !title ||
     title === 'Untitled Marketplace vehicle' ||
@@ -104,15 +112,16 @@ for (const listing of listings) {
     !url.includes('/marketplace/item/') ||
     seenInPayload.has(url) ||
     categoryExcluded ||
+    !categoryAllowed ||
     excludedTitlePattern.test(title) ||
     financeOnly ||
-    hardRejectionReasons.has(reason);
+    hardRejectionReasons.has(reason) ||
+    !strictActiveCar;
 
   if (hardReject) {
     continue;
   }
 
-  const availabilityStatus = normalizeStatus(listing);
   const availabilityConfidence = normalizeConfidence(listing, availabilityStatus);
 
   seenInPayload.add(url);
@@ -311,7 +320,7 @@ def update_live_workflow(connection: sqlite3.Connection) -> None:
         (
             json.dumps(nodes, separators=(",", ":")),
             json.dumps(connections, separators=(",", ":")),
-            "Fail-open Auckland vehicle monitor: stores active, needs-review, and possible-sold under-$7k listings, upserting by URL.",
+            "Strict Auckland passenger-car monitor: stores only verified ACTIVE cars under $7k, upserting by URL.",
             int(row["versionCounter"] or 1) + 1,
             now_sql(),
             WORKFLOW_ID,
@@ -348,7 +357,7 @@ def update_live_workflow(connection: sqlite3.Connection) -> None:
             (
                 json.dumps(nodes, separators=(",", ":")),
                 json.dumps(connections, separators=(",", ":")),
-                "Fail-open Auckland vehicle monitor: stores active, needs-review, and possible-sold under-$7k listings, upserting by URL.",
+                "Strict Auckland passenger-car monitor: stores only verified ACTIVE cars under $7k, upserting by URL.",
                 now_sql(),
                 WORKFLOW_ID,
                 version_id,
@@ -368,8 +377,8 @@ def update_export_file(path: Path) -> None:
     workflow["nodes"] = nodes
     workflow["connections"] = connections
     workflow["description"] = (
-        "Fail-open Auckland vehicle monitor: stores active, needs-review, and "
-        "possible-sold under-$7k listings, upserting by URL."
+        "Strict Auckland passenger-car monitor: stores only verified ACTIVE "
+        "cars under $7k, upserting by URL."
     )
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -396,7 +405,7 @@ def main() -> None:
         for export_path in WORKFLOW_EXPORTS:
             update_export_file(export_path)
 
-    print("[N8N] Fail-open car listing workflow/table upgrade complete.")
+    print("[N8N] Strict active passenger-car workflow/table upgrade complete.")
     print("[N8N] Restart n8n so the active webhook picks up the workflow change.")
 
 
