@@ -14,7 +14,7 @@ from vehicle_valuation.normalization import (
     NormalizedVehicle, is_full_cash_vehicle, parse_kms, parse_price_cents,
     vehicle_from_text,
 )
-from vehicle_valuation.repositories import queue_target
+from vehicle_valuation.repositories import queue_target, recover_stale_work
 from vehicle_valuation.schemas import TargetRequest
 from vehicle_valuation.scrapers.base import RawListing
 from vehicle_valuation.scrapers.catalog import SOURCE_DEFINITIONS
@@ -173,6 +173,23 @@ class QueueLifecycleTests(unittest.TestCase):
             session.commit()
             third = queue_target(session, request)
             self.assertNotEqual(first.id, third.id)
+
+    def test_stale_running_job_is_recovered(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        request = TargetRequest(
+            facebookUrl="https://www.facebook.com/marketplace/item/987654321/",
+            title="2012 Mazda Axela",
+            askingPriceCents=450_000,
+        )
+        with Session(engine, expire_on_commit=False) as session:
+            job = queue_target(session, request)
+            job.status = "RUNNING"
+            job.started_at = utcnow() - timedelta(minutes=20)
+            session.commit()
+            recovered = recover_stale_work(session)
+            self.assertEqual(recovered["jobs"], 1)
+            self.assertEqual(job.status, "RETRY")
 
 
 if __name__ == "__main__":

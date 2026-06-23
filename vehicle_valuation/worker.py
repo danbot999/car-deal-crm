@@ -12,7 +12,9 @@ from .config import (
     RECONCILE_SECONDS, WORKER_POLL_SECONDS, WORK_DIR,
 )
 from .database import init_database, session_scope
-from .repositories import claim_next_job, claim_publication, seed_sources
+from .repositories import (
+    claim_next_job, claim_publication, recover_stale_work, seed_sources,
+)
 from .service import (
     backfill_publication_outbox, deliver_publication, discover_dealer_inventory_sites,
     process_job, queue_existing_crm, reconcile_n8n, refresh_market_index,
@@ -84,6 +86,9 @@ def run_daemon() -> None:
     init_database()
     with session_scope() as session:
         seed_sources(session)
+        recovered = recover_stale_work(session)
+    if recovered["jobs"] or recovered["publications"]:
+        print(f"[VALUATION] {timestamp()} recovered stale work: {recovered}", flush=True)
     created_publications = backfill_publication_outbox()
     if created_publications:
         print(f"[VALUATION] {timestamp()} recovered {created_publications} publication records", flush=True)

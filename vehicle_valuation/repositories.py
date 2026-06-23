@@ -164,6 +164,33 @@ def claim_next_job(session: Session) -> ValuationJob | None:
     return job
 
 
+def recover_stale_work(session: Session, stale_minutes: int = 10) -> dict[str, int]:
+    cutoff = utcnow() - timedelta(minutes=stale_minutes)
+    stale_jobs = list(session.scalars(
+        select(ValuationJob).where(
+            ValuationJob.status == "RUNNING",
+            ValuationJob.started_at < cutoff,
+        )
+    ))
+    for job in stale_jobs:
+        job.status = "RETRY"
+        job.last_error = "Recovered after the previous worker stopped mid-job."
+        job.deadline_at = utcnow() + timedelta(minutes=5)
+
+    stale_publications = list(session.scalars(
+        select(ValuationPublication).where(
+            ValuationPublication.status == "DELIVERING",
+            ValuationPublication.updated_at < cutoff,
+        )
+    ))
+    for publication in stale_publications:
+        publication.status = "RETRY"
+        publication.next_attempt_at = utcnow()
+        publication.last_error = "Recovered after the previous publisher stopped mid-delivery."
+    session.flush()
+    return {"jobs": len(stale_jobs), "publications": len(stale_publications)}
+
+
 def retry_job(session: Session, job_id: str) -> ValuationJob:
     job = session.get(ValuationJob, job_id)
     if job is None:
