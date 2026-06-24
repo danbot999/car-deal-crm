@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from sqlalchemy import update
+from sqlalchemy import delete, update
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,7 +16,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from vehicle_valuation.database import init_database, session_scope  # noqa: E402
-from vehicle_valuation.models import ComparableListing, ComparableSearch, ValuationJob  # noqa: E402
+from vehicle_valuation.models import (  # noqa: E402
+    ComparableListing, ComparableSearch, ValuationJob, ValuationPublication,
+)
 from vehicle_valuation.normalization import vehicle_from_text  # noqa: E402
 from vehicle_valuation.service import queue_existing_crm  # noqa: E402
 
@@ -124,19 +126,29 @@ def invalidate_index() -> dict[str, int]:
     return {"comparablesInvalidated": comparable_count, "searchesReset": search_count, "jobsReset": job_count}
 
 
+def cancel_unpublished_results() -> int:
+    with session_scope() as session:
+        return session.execute(
+            delete(ValuationPublication).where(
+                ValuationPublication.status.in_(["PENDING", "RETRY", "DELIVERING"])
+            )
+        ).rowcount or 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--preserve-exact", action="store_true")
     parser.add_argument("--keep-index", action="store_true")
     args = parser.parse_args()
     init_database()
+    cancelled = cancel_unpublished_results()
     active = reset_crm_market_fields(preserve_exact=args.preserve_exact)
     identity = recanonicalize_active_identities()
     reset = {"comparablesInvalidated": 0, "searchesReset": 0, "jobsReset": 0}
     if not args.keep_index:
         reset = invalidate_index()
     queued = queue_existing_crm(force=True, skip_valued=args.preserve_exact)
-    print({"activeListingsReset": active, "queued": queued, **identity, **reset})
+    print({"activeListingsReset": active, "queued": queued, "stalePublicationsCancelled": cancelled, **identity, **reset})
 
 
 if __name__ == "__main__":
