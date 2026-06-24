@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import valuation_database_url
@@ -31,6 +31,50 @@ if DATABASE_URL.startswith("sqlite"):
 
 def init_database() -> None:
     Base.metadata.create_all(bind=engine)
+    if DATABASE_URL.startswith("sqlite"):
+        migrate_sqlite_schema()
+
+
+def migrate_sqlite_schema() -> None:
+    """Additive migration for existing local indexes without discarding evidence."""
+    additions = {
+        "target_vehicles": {
+            "field_confidence_json": "TEXT",
+            "identity_key": "VARCHAR(300)",
+            "search_id": "VARCHAR(32)",
+        },
+        "valuation_jobs": {
+            "search_id": "VARCHAR(32)",
+            "progress_stage": "VARCHAR(80) NOT NULL DEFAULT 'QUEUED'",
+            "progress_json": "TEXT",
+            "next_retry_at": "DATETIME",
+        },
+        "scrape_runs": {"search_id": "VARCHAR(32)"},
+        "valuation_runs": {
+            "search_id": "VARCHAR(32)",
+            "coverage_json": "TEXT",
+            "valuation_method": "VARCHAR(60)",
+            "raw_median_cents": "INTEGER",
+            "exact_comparable_count": "INTEGER NOT NULL DEFAULT 0",
+            "adjustment_json": "TEXT",
+        },
+    }
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        for table, columns in additions.items():
+            existing = {column["name"] for column in inspector.get_columns(table)}
+            for name, definition in columns.items():
+                if name not in existing:
+                    connection.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}'))
+        for statement in (
+            'CREATE INDEX IF NOT EXISTS "ix_target_identity_key" ON "target_vehicles" ("identity_key")',
+            'CREATE INDEX IF NOT EXISTS "ix_target_search_id" ON "target_vehicles" ("search_id")',
+            'CREATE INDEX IF NOT EXISTS "ix_job_search_id" ON "valuation_jobs" ("search_id")',
+            'CREATE INDEX IF NOT EXISTS "ix_job_next_retry_at" ON "valuation_jobs" ("next_retry_at")',
+            'CREATE INDEX IF NOT EXISTS "ix_scrape_search_id" ON "scrape_runs" ("search_id")',
+            'CREATE INDEX IF NOT EXISTS "ix_valuation_search_id" ON "valuation_runs" ("search_id")',
+        ):
+            connection.execute(text(statement))
 
 
 @contextmanager

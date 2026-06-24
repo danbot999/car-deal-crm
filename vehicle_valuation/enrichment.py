@@ -5,7 +5,9 @@ from __future__ import annotations
 import io
 import json
 import re
+from base64 import b64encode
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -60,7 +62,7 @@ def collect_facebook_page(url: str) -> tuple[str, list[str]]:
     return body_text, image_urls
 
 
-def ocr_image_text(image_urls: list[str], max_images: int = 10) -> tuple[str, list[dict[str, Any]]]:
+def ocr_image_text(image_urls: list[str], max_images: int = 40) -> tuple[str, list[dict[str, Any]]]:
     if not image_urls:
         return "", []
     engine = RapidOCR()
@@ -70,9 +72,13 @@ def ocr_image_text(image_urls: list[str], max_images: int = 10) -> tuple[str, li
     session.headers["User-Agent"] = USER_AGENT
     for url in image_urls[:max_images]:
         try:
-            response = session.get(url, timeout=15)
-            response.raise_for_status()
-            image = Image.open(io.BytesIO(response.content)).convert("RGB")
+            local_path = Path(url)
+            if local_path.is_file():
+                image = Image.open(local_path).convert("RGB")
+            else:
+                response = session.get(url, timeout=15)
+                response.raise_for_status()
+                image = Image.open(io.BytesIO(response.content)).convert("RGB")
             result, _elapsed = engine(np.array(image))
             if not result:
                 continue
@@ -137,7 +143,12 @@ def ai_vehicle_extract(title: str, text: str, image_urls: list[str]) -> tuple[di
             f"Title: {title}\nListing/OCR text: {text[:12000]}"
         ),
     }]
-    for image_url in image_urls[:4]:
+    for image_url in image_urls[:8]:
+        local_path = Path(image_url)
+        if local_path.is_file():
+            mime = "image/png" if local_path.suffix.lower() == ".png" else "image/jpeg"
+            encoded = b64encode(local_path.read_bytes()).decode("ascii")
+            image_url = f"data:{mime};base64,{encoded}"
         content.append({"type": "input_image", "image_url": image_url, "detail": "low"})
     try:
         response = requests.post(
@@ -169,12 +180,18 @@ def merge_vehicle(base: NormalizedVehicle, ai: dict[str, Any] | None) -> Normali
     return vehicle_from_text(base.title, supplied=supplied)
 
 
-def enrich_target(title: str, url: str, supplied: dict[str, Any]) -> EnrichmentResult:
-    page_text, image_urls = collect_facebook_page(url)
+def enrich_target(
+    title: str,
+    url: str,
+    supplied: dict[str, Any],
+    seed_image_urls: list[str] | None = None,
+) -> EnrichmentResult:
+    page_text, page_image_urls = collect_facebook_page(url)
+    image_urls = list(dict.fromkeys([*(seed_image_urls or []), *page_image_urls]))
     base = vehicle_from_text(title, page_text, supplied)
     evidence: dict[str, Any] = {"pageTextAvailable": bool(page_text), "imagesFound": len(image_urls)}
     ocr_text = ""
-    if not base.kms:
+    if any(value is None for value in (base.year, base.make, base.model, base.kms, base.variant)):
         ocr_text, ocr_evidence = ocr_image_text(image_urls)
         evidence["ocr"] = ocr_evidence
         ocr_kms = parse_kms(ocr_text)
@@ -189,4 +206,16 @@ def enrich_target(title: str, url: str, supplied: dict[str, Any]) -> EnrichmentR
         base = merge_vehicle(base, ai_result)
     complete = sum(value is not None for value in (base.year, base.make, base.model, base.kms, base.variant))
     confidence = "HIGH" if complete >= 5 else "MEDIUM" if complete >= 3 else "LOW"
+    evidence["fieldConfidence"] = {
+        "year": "HIGH" if base.year and str(base.year) in title else "MEDIUM" if base.year else "MISSING",
+        "make": "HIGH" if base.make and base.make.lower() in title.lower() else "MEDIUM" if base.make else "MISSING",
+        "model": "HIGH" if base.model and base.model.lower() in title.lower() else "MEDIUM" if base.model else "MISSING",
+        "kms": "HIGH" if base.kms and parse_kms(page_text) else "MEDIUM" if base.kms else "MISSING",
+        "variant": "MEDIUM" if base.variant else "MISSING",
+    }
+    if evidence.get("ai", {}).get("error") and "401" in str(evidence["ai"]["error"]):
+        evidence["configurationWarning"] = (
+            "OpenAI vision authentication failed (HTTP 401). Deterministic text and OCR remain active, "
+            "but ambiguous image-only vehicle identities need a valid OPENAI_API_KEY."
+        )
     return EnrichmentResult(base, page_text, image_urls, evidence, confidence)

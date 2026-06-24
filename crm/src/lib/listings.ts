@@ -168,16 +168,15 @@ export async function getDashboardData(filters: ListingFilters) {
     prisma.listing.count({
       where: {
         ...activeWhere,
-        marketValuationStatus: { notIn: ["VALUED", "INDICATIVE"] }
+        marketValuationStatus: { notIn: ["VALUED", "PROVISIONAL", "INDICATIVE"] }
       }
     })
   ]);
 
   const visibleListings = listings.map((listing) => {
-    const metrics = calculateDealMetrics(
-      listing.valuationCents,
-      listing.askingPriceCents
-    );
+    const primaryValuationCents = listing.valuationCents ?? listing.marketValueCents;
+    const metrics = calculateDealMetrics(primaryValuationCents, listing.askingPriceCents);
+    const useManualValuation = listing.valuationCents != null;
 
     return {
       ...listing,
@@ -186,11 +185,15 @@ export async function getDashboardData(filters: ListingFilters) {
         ? listing.availabilityStatus
         : "ACTIVE",
       displayTargetSellPriceCents:
-        listing.targetSellPriceCents ?? metrics.targetSellPriceCents,
+        (useManualValuation ? listing.targetSellPriceCents : listing.marketTargetSellCents) ??
+        metrics.targetSellPriceCents,
       displayMaxBuyPriceCents:
-        listing.maxBuyPriceCents ?? metrics.maxBuyPriceCents,
+        (useManualValuation ? listing.maxBuyPriceCents : listing.marketMaxBuyCents) ??
+        metrics.maxBuyPriceCents,
       displayEstimatedProfitCents:
-        listing.estimatedProfitCents ?? metrics.estimatedProfitCents
+        (useManualValuation ? listing.estimatedProfitCents : listing.marketExpectedSpreadCents) ??
+        metrics.estimatedProfitCents,
+      displayValuationCents: primaryValuationCents
     };
   });
 

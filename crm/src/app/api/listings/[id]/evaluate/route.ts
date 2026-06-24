@@ -248,7 +248,8 @@ async function wait(ms: number) {
 
 function buildResearchContext(
   listing: Awaited<ReturnType<typeof prisma.listing.findUnique>>,
-  metrics: ReturnType<typeof calculateDealMetrics>
+  metrics: ReturnType<typeof calculateDealMetrics>,
+  evaluationValueCents: number
 ) {
   if (!listing) {
     throw new Error("Listing not found.");
@@ -268,7 +269,8 @@ function buildResearchContext(
       title: listing.title,
       facebookUrl: listing.facebookUrl,
       askingPrice: formatMoney(listing.askingPriceCents),
-      tradeMeValuation: formatMoney(listing.valuationCents),
+      valuationBasis: formatMoney(evaluationValueCents),
+      valuationSource: listing.valuationCents != null ? "Manual Trade Me value" : "NZ asking-market index",
       targetSellPrice: formatMoney(
         listing.targetSellPriceCents ?? metrics.targetSellPriceCents
       ),
@@ -289,7 +291,7 @@ function buildResearchContext(
       listingDescription: listing.listingDescription
     },
     pricingRule: {
-      targetSell: "Trade Me valuation x 80%",
+      targetSell: "selected valuation basis x 80% (manual Trade Me overrides NZ market index)",
       maxBuy: "target sell price minus $1,000",
       profitAtAsk: "target sell price minus asking price"
     },
@@ -299,7 +301,8 @@ function buildResearchContext(
 
 function mockReport(
   listing: NonNullable<Awaited<ReturnType<typeof prisma.listing.findUnique>>>,
-  metrics: ReturnType<typeof calculateDealMetrics>
+  metrics: ReturnType<typeof calculateDealMetrics>,
+  evaluationValueCents: number
 ): LeadReport {
   const isBmw = /bmw/i.test(listing.title);
   const specificFailure = isBmw
@@ -336,7 +339,7 @@ function mockReport(
     },
     dealNumbers: {
       askingPrice: formatMoney(listing.askingPriceCents),
-      tradeMeValuation: formatMoney(listing.valuationCents),
+      tradeMeValuation: formatMoney(evaluationValueCents),
       targetSellPrice: formatMoney(metrics.targetSellPriceCents),
       maxBuyPrice: formatMoney(metrics.maxBuyPriceCents),
       estimatedProfitAtAsk: formatMoney(metrics.estimatedProfitCents),
@@ -405,15 +408,17 @@ async function runOpenAiEvaluation({
   images,
   listing,
   metrics,
+  evaluationValueCents,
   model
 }: {
   apiKey: string;
   images: Awaited<ReturnType<typeof listingImageInputs>>;
   listing: NonNullable<Awaited<ReturnType<typeof prisma.listing.findUnique>>>;
   metrics: ReturnType<typeof calculateDealMetrics>;
+  evaluationValueCents: number;
   model: string;
 }) {
-  const contextText = buildResearchContext(listing, metrics);
+  const contextText = buildResearchContext(listing, metrics, evaluationValueCents);
   const requestBody = JSON.stringify({
     model,
     tools: [{ type: "web_search" }],
@@ -501,9 +506,10 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Listing not found." }, { status: 404 });
   }
 
-  if (listing.valuationCents == null) {
+  const evaluationValueCents = listing.valuationCents ?? listing.marketValueCents;
+  if (evaluationValueCents == null) {
     return NextResponse.json(
-      { error: "Add Trade Me value first." },
+      { error: "Wait for the NZ market estimate or add a Trade Me value first." },
       { status: 400 }
     );
   }
@@ -524,7 +530,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
   try {
     const metrics = calculateDealMetrics(
-      listing.valuationCents,
+      evaluationValueCents,
       listing.askingPriceCents
     );
     const images = await listingImageInputs(listing);
@@ -536,12 +542,13 @@ export async function POST(_request: Request, context: RouteContext) {
     }
 
     const result = useMock
-      ? { report: mockReport(listing, metrics), citations: [] }
+      ? { report: mockReport(listing, metrics, evaluationValueCents), citations: [] }
       : await runOpenAiEvaluation({
           apiKey: apiKey as string,
           images,
           listing,
           metrics,
+          evaluationValueCents,
           model
         });
 

@@ -37,9 +37,15 @@ def startup() -> None:
 
 
 def job_response(job: ValuationJob) -> JobResponse:
+    try:
+        progress = json.loads(job.progress_json or "{}")
+    except ValueError:
+        progress = {}
     return JobResponse(
         id=job.id, listingId=job.target.crm_listing_id, status=job.status,
         attempts=job.attempts, lastError=job.last_error,
+        progressStage=job.progress_stage, progress=progress,
+        searchIdentity=job.target.identity_key,
         createdAt=job.created_at, updatedAt=job.updated_at,
     )
 
@@ -104,7 +110,7 @@ def list_jobs(
 
 @app.get("/v1/admin/jobs")
 def list_admin_jobs() -> dict[str, object]:
-    return list_jobs("PENDING,RUNNING,RETRY,FAILED,INSUFFICIENT_DATA", 100)
+    return list_jobs("PENDING,RUNNING,RETRY,EXPANDING_SEARCH", 100)
 
 
 @app.get("/v1/jobs/{job_id}", response_model=JobResponse, dependencies=[Depends(authorize)])
@@ -145,6 +151,10 @@ def get_valuation(listing_id: str) -> ValuationResponse:
             highestComparableCents=run.highest_cents, aucklandMedianCents=run.auckland_median_cents,
             differenceCents=run.difference_cents, differencePercent=run.difference_percent,
             relation=run.relation, verdict=run.verdict, confidence=run.confidence,
+            valuationMethod=run.valuation_method, rawMedianCents=run.raw_median_cents,
+            exactComparableCount=run.exact_comparable_count,
+            adjustment=json.loads(run.adjustment_json or "{}"),
+            coverage=json.loads(run.coverage_json or "{}"),
             reason=run.reason, targetSellCents=run.target_sell_cents, maxBuyCents=run.max_buy_cents,
             expectedSpreadCents=run.expected_spread_cents, sourcesAttempted=run.sources_attempted,
             sourcesSuccessful=run.sources_successful,
@@ -168,7 +178,11 @@ def get_comparables(listing_id: str) -> dict[str, object]:
                     "matchScore": row.match_score, "exclusionReason": row.exclusion_reason,
                     "source": row.comparable.source_id, "title": row.comparable.title,
                     "url": row.comparable.canonical_url, "priceCents": row.comparable.asking_price_cents,
-                    "year": row.comparable.year, "kms": row.comparable.kms, "region": row.comparable.region,
+                    "year": row.comparable.year, "make": row.comparable.make,
+                    "model": row.comparable.model, "variant": row.comparable.variant,
+                    "kms": row.comparable.kms, "transmission": row.comparable.transmission,
+                    "fuelType": row.comparable.fuel_type, "bodyType": row.comparable.body_type,
+                    "region": row.comparable.region, "observedAt": row.comparable.last_seen_at,
                 }
                 for row in rows
             ],

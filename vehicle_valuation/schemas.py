@@ -40,6 +40,9 @@ class JobResponse(BaseModel):
     status: str
     attempts: int
     lastError: str | None = None
+    progressStage: str | None = None
+    progress: dict[str, Any] = Field(default_factory=dict)
+    searchIdentity: str | None = None
     createdAt: datetime
     updatedAt: datetime
 
@@ -59,6 +62,11 @@ class ValuationResponse(BaseModel):
     relation: str | None
     verdict: str | None
     confidence: str
+    valuationMethod: str | None = None
+    rawMedianCents: int | None = None
+    exactComparableCount: int = 0
+    adjustment: dict[str, Any] = Field(default_factory=dict)
+    coverage: dict[str, Any] = Field(default_factory=dict)
     reason: str
     targetSellCents: int | None
     maxBuyCents: int | None

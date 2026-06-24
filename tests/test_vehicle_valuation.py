@@ -18,7 +18,8 @@ from vehicle_valuation.repositories import queue_target, recover_stale_work
 from vehicle_valuation.schemas import TargetRequest
 from vehicle_valuation.scrapers.base import RawListing
 from vehicle_valuation.scrapers.catalog import SOURCE_DEFINITIONS
-from vehicle_valuation.scrapers.generic import ConfiguredPortalAdapter, PortalConfig
+from vehicle_valuation.scrapers.generic import BLOCKED_RE, ConfiguredPortalAdapter, PortalConfig
+from vehicle_valuation.scrapers.trademe import parse_rendered_cards
 from vehicle_valuation.valuation import value_vehicle, verdict_for_percentage
 
 
@@ -28,7 +29,7 @@ def comparable(
     *,
     year: int = 2018,
     kms: int = 100_000,
-    model: str = "Corolla GX",
+    model: str = "Corolla",
     url_suffix: str = "1",
 ) -> RawListing:
     return RawListing(
@@ -53,11 +54,39 @@ class NormalizationTests(unittest.TestCase):
         vehicle = vehicle_from_text("2018 Toyota Corolla GX | $16,900", "181,000 km automatic petrol hatch")
         self.assertEqual(vehicle.year, 2018)
         self.assertEqual(vehicle.make, "Toyota")
-        self.assertEqual(vehicle.model, "Corolla GX")
+        self.assertEqual(vehicle.model, "Corolla")
+        self.assertEqual(vehicle.variant, "GX")
         self.assertEqual(vehicle.kms, 181_000)
         self.assertEqual(vehicle.transmission, "AUTOMATIC")
         self.assertEqual(vehicle.fuel_type, "PETROL")
         self.assertEqual(vehicle.body_type, "HATCHBACK")
+
+    def test_subaru_trim_is_not_part_of_canonical_model(self) -> None:
+        vehicle = vehicle_from_text(
+            "Subaru legacy 2006 (black edition)",
+            "Electric windows. Auckland. 161,000 km.",
+        )
+        self.assertEqual(vehicle.year, 2006)
+        self.assertEqual(vehicle.make, "Subaru")
+        self.assertEqual(vehicle.model, "Legacy")
+        self.assertEqual(vehicle.variant, "black edition")
+        self.assertEqual(vehicle.kms, 161_000)
+        self.assertIsNone(vehicle.fuel_type)
+        self.assertEqual(vehicle.region, "Auckland")
+
+    def test_shorthand_and_misspelling_aliases(self) -> None:
+        self.assertEqual(vehicle_from_text("Swift 2009").make, "Suzuki")
+        self.assertEqual(vehicle_from_text("MPV 2008").make, "Mazda")
+        demio = vehicle_from_text("Mazada demio 2007")
+        self.assertEqual((demio.make, demio.model), ("Mazda", "Demio"))
+        audi = vehicle_from_text("Audi A6 2008 *low kms*")
+        self.assertEqual((audi.year, audi.make, audi.model), (2008, "Audi", "A6"))
+        skoda = vehicle_from_text("2009 Skoda Superb 2.0 TDI Auto")
+        self.assertEqual(skoda.model, "Superb")
+
+    def test_engine_capacity_in_description_is_not_used_as_model_year(self) -> None:
+        vehicle = vehicle_from_text("Kia Sorento Limited - project", "2000 cc diesel engine")
+        self.assertIsNone(vehicle.year)
 
     def test_price_and_km_formats(self) -> None:
         self.assertEqual(parse_price_cents("Cash price $18,500"), 1_850_000)
@@ -72,6 +101,36 @@ class NormalizationTests(unittest.TestCase):
 
 
 class PortalFixtureTests(unittest.TestCase):
+    def test_harmless_recaptcha_configuration_is_not_a_block(self) -> None:
+        self.assertIsNone(BLOCKED_RE.search('{"recaptchaSiteKey":"public-config-value"}'))
+
+    def test_trademe_cards_keep_cash_prices_and_reject_auctions_and_wrong_models(self) -> None:
+        target = NormalizedVehicle(title="2006 Subaru Legacy", year=2006, make="Subaru", model="Legacy")
+        cards = [
+            {
+                "href": "https://www.trademe.co.nz/a/motors/cars/subaru/legacy/listing/1234567890",
+                "anchorText": "2006 Subaru Legacy GT",
+                "text": "2006 Subaru Legacy GT\n161,000 km\nAsking price $5,500\nFinance from $79 per week",
+                "image": "",
+            },
+            {
+                "href": "https://www.trademe.co.nz/a/motors/cars/subaru/legacy/listing/1234567891",
+                "anchorText": "2006 Subaru Legacy",
+                "text": "2006 Subaru Legacy\nCurrent bid $3,000\nReserve not met",
+                "image": "",
+            },
+            {
+                "href": "https://www.trademe.co.nz/a/motors/cars/subaru/outback/listing/1234567892",
+                "anchorText": "2006 Subaru Outback",
+                "text": "2006 Subaru Outback\nAsking price $6,500",
+                "image": "",
+            },
+        ]
+        listings, rejected = parse_rendered_cards(cards, target)
+        self.assertEqual(len(listings), 1)
+        self.assertEqual(listings[0].asking_price_cents, 550_000)
+        self.assertEqual(rejected, 2)
+
     def test_every_inventory_portal_parses_json_ld_fixture(self) -> None:
         html = """
         <html><script type="application/ld+json">
@@ -81,7 +140,7 @@ class PortalFixtureTests(unittest.TestCase):
          "fuelType":"Petrol","bodyType":"Hatchback","offers":{"price":"18500"}}
         </script></html>
         """
-        target = NormalizedVehicle(title="2018 Toyota Corolla GX", year=2018, make="Toyota", model="Corolla GX")
+        target = NormalizedVehicle(title="2018 Toyota Corolla GX", year=2018, make="Toyota", model="Corolla")
         inventory_sources = [item for item in SOURCE_DEFINITIONS if item["role"] == "INVENTORY" and item["id"] not in {"facebook_marketplace", "generic_dealers"}]
         self.assertGreaterEqual(len(inventory_sources), 6)
         for source in inventory_sources:
@@ -102,7 +161,7 @@ class PortalFixtureTests(unittest.TestCase):
 class MatchingAndValuationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.target = NormalizedVehicle(
-            title="2018 Toyota Corolla GX", year=2018, make="Toyota", model="Corolla GX",
+            title="2018 Toyota Corolla GX", year=2018, make="Toyota", model="Corolla",
             variant="GX", kms=100_000, transmission="AUTOMATIC", fuel_type="PETROL",
             body_type="HATCHBACK", region="Auckland",
         )
@@ -142,6 +201,41 @@ class MatchingAndValuationTests(unittest.TestCase):
         self.assertEqual(verdict_for_percentage(-4.99)[0], "FAIR_MARKET_VALUE")
         self.assertEqual(verdict_for_percentage(-5)[0], "OVERPRICED")
         self.assertEqual(verdict_for_percentage(-10.01)[0], "VERY_OVERPRICED")
+
+    def test_exact_uses_every_same_year_make_model_listing(self) -> None:
+        items = [
+            comparable("a", 1_500_000, kms=40_000, model="Corolla", url_suffix="a"),
+            comparable("b", 1_900_000, kms=240_000, model="Corolla", url_suffix="b"),
+            comparable("c", 1_700_000, kms=120_000, model="Corolla", url_suffix="c"),
+        ]
+        items[0].variant = "GLX"
+        items[1].variant = "GX"
+        result = value_vehicle(self.target, 1_400_000, items)
+        self.assertEqual(result.method, "EXACT")
+        self.assertEqual(result.comparable_count, 3)
+        self.assertEqual(result.market_value_cents, 1_700_000)
+        self.assertEqual(result.confidence, "EXACT_LOW")
+
+    def test_generation_and_class_fallbacks_always_remain_numeric(self) -> None:
+        generation = [
+            comparable("g1", 1_700_000, year=2017, url_suffix="g1"),
+            comparable("g2", 1_900_000, year=2019, url_suffix="g2"),
+        ]
+        generation_result = value_vehicle(self.target, 1_500_000, generation)
+        self.assertEqual(generation_result.status, "PROVISIONAL")
+        self.assertEqual(generation_result.method, "GENERATION_ADJUSTED")
+        self.assertIsNotNone(generation_result.market_value_cents)
+
+        different_model = comparable("class", 1_600_000, model="Camry", url_suffix="class")
+        class_result = value_vehicle(self.target, 1_500_000, [different_model])
+        self.assertEqual(class_result.status, "PROVISIONAL")
+        self.assertIn(class_result.method, {"MAKE_CLASS_PROVISIONAL", "CLASS_PROVISIONAL"})
+        self.assertIsNotNone(class_result.market_value_cents)
+
+    def test_empty_index_keeps_expanding_instead_of_terminal_failure(self) -> None:
+        result = value_vehicle(self.target, 1_500_000, [])
+        self.assertEqual(result.status, "EXPANDING_SEARCH")
+        self.assertIsNone(result.market_value_cents)
 
 
 class QueueLifecycleTests(unittest.TestCase):

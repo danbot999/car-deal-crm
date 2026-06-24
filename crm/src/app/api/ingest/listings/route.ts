@@ -56,6 +56,15 @@ type PreparedListing = {
   marketRelation: string | null;
   marketVerdict: string | null;
   marketConfidence: string | null;
+  marketValuationMethod: string | null;
+  marketRawMedianCents: number | null;
+  marketExactComparableCount: number;
+  marketAdjustmentJson: string | null;
+  marketCoverageJson: string | null;
+  marketSearchIdentity: string | null;
+  marketSearchStage: string;
+  marketSearchProgressJson: string | null;
+  marketConfigurationWarning: string | null;
   marketReason: string | null;
   marketTargetSellCents: number | null;
   marketMaxBuyCents: number | null;
@@ -221,6 +230,15 @@ function prepareListing(value: unknown): PreparedListing {
     marketRelation: cleanString(item.marketRelation, 40),
     marketVerdict: cleanString(item.marketVerdict, 60),
     marketConfidence: cleanString(item.marketConfidence, 30),
+    marketValuationMethod: cleanString(item.marketValuationMethod, 60),
+    marketRawMedianCents: parseOptionalInteger(item.marketRawMedianCents, 0, 100_000_000),
+    marketExactComparableCount: parseOptionalInteger(item.marketExactComparableCount, 0, 100_000) ?? 0,
+    marketAdjustmentJson: cleanString(item.marketAdjustmentJson, 500_000),
+    marketCoverageJson: cleanString(item.marketCoverageJson, 2_000_000),
+    marketSearchIdentity: cleanString(item.marketSearchIdentity, 300),
+    marketSearchStage: cleanString(item.marketSearchStage, 80) ?? "QUEUED",
+    marketSearchProgressJson: cleanString(item.marketSearchProgressJson, 500_000),
+    marketConfigurationWarning: cleanString(item.marketConfigurationWarning, 2_000),
     marketReason: cleanString(item.marketReason, 4_000),
     marketTargetSellCents: parseOptionalInteger(item.marketTargetSellCents, -100_000_000, 100_000_000),
     marketMaxBuyCents: parseOptionalInteger(item.marketMaxBuyCents, -100_000_000, 100_000_000),
@@ -228,7 +246,7 @@ function prepareListing(value: unknown): PreparedListing {
     marketSourcesAttempted: parseOptionalInteger(item.marketSourcesAttempted, 0, 10_000) ?? 0,
     marketSourcesSuccessful: parseOptionalInteger(item.marketSourcesSuccessful, 0, 10_000) ?? 0,
     marketSourceBreakdownJson: cleanString(item.marketSourceBreakdownJson, 100_000),
-    marketComparablesJson: cleanString(item.marketComparablesJson, 1_000_000),
+    marketComparablesJson: cleanString(item.marketComparablesJson, 10_000_000),
     marketValuedAt: parseDate(item.marketValuedAt),
     marketValuationRunId: cleanString(item.marketValuationRunId, 100),
     availabilityStatus,
@@ -374,6 +392,15 @@ export async function POST(request: Request) {
           marketRelation: item.marketRelation,
           marketVerdict: item.marketVerdict,
           marketConfidence: item.marketConfidence,
+          marketValuationMethod: item.marketValuationMethod,
+          marketRawMedianCents: item.marketRawMedianCents,
+          marketExactComparableCount: item.marketExactComparableCount,
+          marketAdjustmentJson: item.marketAdjustmentJson,
+          marketCoverageJson: item.marketCoverageJson,
+          marketSearchIdentity: item.marketSearchIdentity,
+          marketSearchStage: item.marketSearchStage,
+          marketSearchProgressJson: item.marketSearchProgressJson,
+          marketConfigurationWarning: item.marketConfigurationWarning,
           marketReason: item.marketReason,
           marketTargetSellCents: item.marketTargetSellCents,
           marketMaxBuyCents: item.marketMaxBuyCents,
@@ -419,6 +446,15 @@ export async function POST(request: Request) {
           marketRelation: item.marketRelation,
           marketVerdict: item.marketVerdict,
           marketConfidence: item.marketConfidence,
+          marketValuationMethod: item.marketValuationMethod,
+          marketRawMedianCents: item.marketRawMedianCents,
+          marketExactComparableCount: item.marketExactComparableCount,
+          marketAdjustmentJson: item.marketAdjustmentJson,
+          marketCoverageJson: item.marketCoverageJson,
+          marketSearchIdentity: item.marketSearchIdentity,
+          marketSearchStage: item.marketSearchStage,
+          marketSearchProgressJson: item.marketSearchProgressJson,
+          marketConfigurationWarning: item.marketConfigurationWarning,
           marketReason: item.marketReason,
           marketTargetSellCents: item.marketTargetSellCents,
           marketMaxBuyCents: item.marketMaxBuyCents,

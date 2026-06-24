@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AppNav } from "@/components/AppNav";
 import { SaveToAdminButton } from "@/components/SaveToAdminButton";
 import { SafeCarImage } from "@/components/SafeCarImage";
@@ -53,6 +55,15 @@ type DashboardListing = {
   marketRelation: string | null;
   marketVerdict: string | null;
   marketConfidence: string | null;
+  marketValuationMethod: string | null;
+  marketRawMedianCents: number | null;
+  marketExactComparableCount: number;
+  marketAdjustmentJson: string | null;
+  marketCoverageJson: string | null;
+  marketSearchIdentity: string | null;
+  marketSearchStage: string;
+  marketSearchProgressJson: string | null;
+  marketConfigurationWarning: string | null;
   marketReason: string | null;
   marketTargetSellCents: number | null;
   marketMaxBuyCents: number | null;
@@ -65,6 +76,7 @@ type DashboardListing = {
   displayTargetSellPriceCents: number | null;
   displayMaxBuyPriceCents: number | null;
   displayEstimatedProfitCents: number | null;
+  displayValuationCents: number | null;
   aiSummary: string | null;
   dealScore: number | null;
   riskLevel: string;
@@ -232,7 +244,7 @@ function DealSnapshot({ listing }: { listing: DashboardListing }) {
 
   return (
     <div className="grid grid-cols-2 gap-3 rounded-3xl border border-slate-200 bg-slate-50/80 p-4 sm:grid-cols-4 xl:grid-cols-2">
-      <CompactMetric label="Value" value={formatMoney(listing.valuationCents)} />
+      <CompactMetric label="Value" value={formatMoney(listing.displayValuationCents)} />
       <CompactMetric
         label="Max buy"
         value={formatMoney(listing.displayMaxBuyPriceCents)}
@@ -292,6 +304,8 @@ type MarketComparable = {
   region?: string | null;
   matchTier?: string;
   matchScore?: number;
+  accepted?: boolean;
+  exclusionReason?: string | null;
 };
 
 function marketComparables(value: string | null): MarketComparable[] {
@@ -314,13 +328,38 @@ const marketVerdictLabels: Record<string, string> = {
   VERY_OVERPRICED: "Very overpriced"
 };
 
+const marketMethodLabels: Record<string, string> = {
+  EXACT: "Exact year/model median",
+  GENERATION_ADJUSTED: "Generation-adjusted estimate",
+  MODEL_ADJUSTED: "Model regression estimate",
+  MAKE_CLASS_PROVISIONAL: "Make/class provisional estimate",
+  CLASS_PROVISIONAL: "NZ class provisional estimate"
+};
+
+function marketProgress(value: string | null) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as {
+      stage?: string;
+      sourcesCompleted?: number;
+      sourcesTotal?: number;
+      comparablesFound?: number;
+      updatedAt?: string;
+    };
+  } catch {
+    return null;
+  }
+}
+
 function MarketValuationPanel({ listing }: { listing: DashboardListing }) {
   const valued = listing.marketValueCents != null;
-  const evidence = marketComparables(listing.marketComparablesJson);
+  const allEvidence = marketComparables(listing.marketComparablesJson);
+  const evidence = allEvidence.filter((item) => item.accepted !== false);
+  const progress = marketProgress(listing.marketSearchProgressJson);
   const difference = listing.marketDifferenceCents;
   const good = difference != null && difference > 0;
   const verdict = marketVerdictLabels[listing.marketVerdict ?? ""] ??
-    (listing.marketValuationStatus === "INSUFFICIENT_DATA" ? "Insufficient data" : "Valuation pending");
+    "Valuation in progress";
   const badgeClass = !valued
     ? "bg-amber-100 text-amber-800"
     : good
@@ -354,6 +393,9 @@ function MarketValuationPanel({ listing }: { listing: DashboardListing }) {
         <>
           <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
             <CompactMetric label="Market median" value={formatMoney(listing.marketValueCents)} />
+            {listing.marketRawMedianCents != null && listing.marketRawMedianCents !== listing.marketValueCents ? (
+              <CompactMetric label="Raw evidence median" value={formatMoney(listing.marketRawMedianCents)} />
+            ) : null}
             <CompactMetric
               label="Difference"
               tone={good ? "good" : difference && difference < 0 ? "bad" : "default"}
@@ -373,6 +415,8 @@ function MarketValuationPanel({ listing }: { listing: DashboardListing }) {
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-600">{listing.marketReason}</p>
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-500">
+            <span>{marketMethodLabels[listing.marketValuationMethod ?? ""] ?? listing.marketValuationMethod ?? "Evidence-backed estimate"}</span>
+            <span>{listing.marketExactComparableCount} exact matches</span>
             <span>{listing.marketSourcesSuccessful}/{listing.marketSourcesAttempted} sources responded</span>
             <span>Max buy {formatMoney(listing.marketMaxBuyCents)}</span>
             <span>Expected spread {formatMoney(listing.marketExpectedSpreadCents)}</span>
@@ -383,11 +427,37 @@ function MarketValuationPanel({ listing }: { listing: DashboardListing }) {
           </div>
         </>
       ) : (
-        <p className="mt-4 text-sm leading-6 text-slate-600">
-          {listing.marketValuationError ?? listing.marketReason ??
-            "The valuation worker is collecting and deduplicating comparable NZ listings."}
-        </p>
+        <div className="mt-4 grid gap-3">
+          <p className="text-sm font-semibold text-slate-800">
+            {listing.marketSearchStage.replaceAll("_", " ").toLowerCase()}
+          </p>
+          <p className="text-sm leading-6 text-slate-600">
+            {listing.marketReason ?? listing.marketValuationError ??
+              "The valuation worker is identifying this car and exhausting nationwide comparable sources."}
+          </p>
+          {progress ? (
+            <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+              {progress.sourcesTotal ? <span>{progress.sourcesCompleted ?? 0}/{progress.sourcesTotal} sources complete</span> : null}
+              {progress.comparablesFound != null ? <span>{progress.comparablesFound} candidates found</span> : null}
+            </div>
+          ) : null}
+        </div>
       )}
+
+      {listing.marketConfigurationWarning ? (
+        <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          {listing.marketConfigurationWarning}
+        </p>
+      ) : null}
+
+      <div className="mt-5 flex flex-wrap gap-3">
+        <Link
+          className="inline-flex rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-slate-800"
+          href={`/market-evidence/${listing.id}`}
+        >
+          Open Market Evidence
+        </Link>
+      </div>
 
       {evidence.length > 0 ? (
         <details className="mt-5 rounded-2xl border border-slate-200 bg-white/90">
@@ -516,6 +586,7 @@ function ListingCard({ listing }: { listing: DashboardListing }) {
           kmsConfidence={listing.kmsConfidence}
           listingId={listing.id}
           maxBuyPriceCents={listing.displayMaxBuyPriceCents}
+          marketValueCents={listing.marketValueCents}
           numberPlate={listing.numberPlate}
           numberPlateConfidence={listing.numberPlateConfidence}
           profitabilitySummary={listing.profitabilitySummary}

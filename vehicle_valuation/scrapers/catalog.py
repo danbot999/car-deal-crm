@@ -9,6 +9,7 @@ from ..normalization import NormalizedVehicle
 from .facebook_history import FacebookHistoryAdapter
 from .generic_dealer import GenericDealerAdapter
 from .generic import ConfiguredPortalAdapter, PortalConfig, query_text, quoted_query_builder, slug
+from .trademe import TradeMeMotorsAdapter
 
 
 SOURCE_DEFINITIONS = [
@@ -48,7 +49,6 @@ def onlycars_search(target: NormalizedVehicle) -> str:
 
 def build_inventory_adapters(dealer_sites: list[tuple[str, str | None]] | None = None):
     configs = [
-        PortalConfig("trademe_motors", "Trade Me Motors", "https://www.trademe.co.nz", quoted_query_builder("https://www.trademe.co.nz/a/motors/cars/search", "search_string"), re.compile(r"/a/motors/(?:cars|used-cars)/.+/listing/\d+", re.I), "MIXED", 3),
         PortalConfig("needacar", "Need A Car", "https://www.needacar.co.nz", quoted_query_builder("https://www.needacar.co.nz/vehicles", "search"), re.compile(r"/(?:vehicle|vehicles)/[^?#]+", re.I), "DEALER", 2),
         PortalConfig("onlycars", "OnlyCars", "https://www.onlycars.co.nz", onlycars_search, re.compile(r"/for-sale/(?!type/|price/|body/|make/[^/]+/model/[^/]+/?$)[^?#]+", re.I), "DEALER", 2),
         PortalConfig("justcar", "JustCar", "https://www.justcar.co.nz", quoted_query_builder("https://www.justcar.co.nz/used-cars-for-sale", "search"), re.compile(r"/used-cars-for-sale/\d+", re.I), "DEALER", 2),
@@ -57,6 +57,7 @@ def build_inventory_adapters(dealer_sites: list[tuple[str, str | None]] | None =
     ]
     return [
         FacebookHistoryAdapter(),
+        TradeMeMotorsAdapter(),
         *(ConfiguredPortalAdapter(config) for config in configs),
         GenericDealerAdapter(dealer_sites or []),
     ]

@@ -9,12 +9,15 @@ export const runtime = "nodejs";
 
 const defaultIngestTokenHash =
   "b9e1a9065d25a89a42ab97a38945fa1e021ddb954c24e1902169c8ad00e8bc11";
-const publishableStatuses = new Set(["VALUED", "INDICATIVE"]);
+const publishableStatuses = new Set(["VALUED", "PROVISIONAL", "INDICATIVE"]);
 const knownStatuses = new Set([
   "NOT_STARTED",
   "PENDING",
   "RUNNING",
+  "EXPANDING_SEARCH",
+  "RETRYING",
   "VALUED",
+  "PROVISIONAL",
   "INDICATIVE",
   "INSUFFICIENT_DATA",
   "FAILED"
@@ -105,16 +108,6 @@ export async function POST(request: Request) {
       throw new Error("A title and valid asking price are required.");
     }
 
-    const existing = await prisma.listing.findUnique({ where: { facebookUrl } });
-    if (!existing && !publishableStatuses.has(marketValuationStatus)) {
-      return NextResponse.json({
-        ok: true,
-        stored: false,
-        status: marketValuationStatus,
-        reason: "The new listing is held in the valuation queue until a market value is available."
-      });
-    }
-
     const marketValueCents = optionalInteger(body.marketValueCents, 0);
     const marketReason = cleanString(body.marketReason, 4_000);
     const valuationData = {
@@ -142,6 +135,15 @@ export async function POST(request: Request) {
       marketRelation: cleanString(body.marketRelation, 40),
       marketVerdict: cleanString(body.marketVerdict, 60),
       marketConfidence: cleanString(body.marketConfidence, 30),
+      marketValuationMethod: cleanString(body.marketValuationMethod, 60),
+      marketRawMedianCents: optionalInteger(body.marketRawMedianCents, 0),
+      marketExactComparableCount: optionalInteger(body.marketExactComparableCount, 0, 100_000) ?? 0,
+      marketAdjustmentJson: cleanString(body.marketAdjustmentJson, 500_000),
+      marketCoverageJson: cleanString(body.marketCoverageJson, 2_000_000),
+      marketSearchIdentity: cleanString(body.marketSearchIdentity, 300),
+      marketSearchStage: cleanString(body.marketSearchStage, 80) ?? "QUEUED",
+      marketSearchProgressJson: cleanString(body.marketSearchProgressJson, 500_000),
+      marketConfigurationWarning: cleanString(body.marketConfigurationWarning, 2_000),
       marketReason,
       marketTargetSellCents: optionalInteger(body.marketTargetSellCents),
       marketMaxBuyCents: optionalInteger(body.marketMaxBuyCents),
@@ -149,8 +151,10 @@ export async function POST(request: Request) {
       marketSourcesAttempted: optionalInteger(body.marketSourcesAttempted, 0, 10_000) ?? 0,
       marketSourcesSuccessful: optionalInteger(body.marketSourcesSuccessful, 0, 10_000) ?? 0,
       marketSourceBreakdownJson: cleanString(body.marketSourceBreakdownJson, 100_000),
-      marketComparablesJson: cleanString(body.marketComparablesJson, 1_000_000),
-      marketValuedAt: parseDate(body.marketValuedAt) ?? new Date(),
+      marketComparablesJson: cleanString(body.marketComparablesJson, 10_000_000),
+      marketValuedAt:
+        parseDate(body.marketValuedAt) ??
+        (publishableStatuses.has(marketValuationStatus) ? new Date() : null),
       marketValuationRunId: cleanString(body.marketValuationRunId, 100)
     };
 

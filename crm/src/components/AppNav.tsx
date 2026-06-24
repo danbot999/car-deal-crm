@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 type AppNavProps = {
-  active: "home" | "dashboard" | "leads" | "admin";
+  active: "home" | "dashboard" | "leads" | "admin" | "market-evidence";
 };
 
 export function AppNav({ active }: AppNavProps) {
@@ -31,6 +31,9 @@ export function AppNav({ active }: AppNavProps) {
         </Link>
         <Link className={linkClass("dashboard")} href="/dashboard">
           Dashboard
+        </Link>
+        <Link className={linkClass("market-evidence")} href="/market-evidence">
+          Market Evidence
         </Link>
         <Link className={linkClass("leads")} href="/leads">
           Leads

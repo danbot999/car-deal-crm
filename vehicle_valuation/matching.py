@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from rapidfuzz.fuzz import token_set_ratio
-
 from .normalization import NormalizedVehicle, normalize_token
 
 
@@ -25,7 +23,7 @@ def same_identity(target: NormalizedVehicle, item: Any) -> bool:
     item_model = normalize_token(getattr(item, "model", None))
     if not target_make or not target_model or not item_make or not item_model:
         return False
-    return target_make == item_make and token_set_ratio(target_model, item_model) >= 90
+    return target_make == item_make and target_model == item_model
 
 
 def compatible(target_value: str | None, item_value: str | None) -> bool:

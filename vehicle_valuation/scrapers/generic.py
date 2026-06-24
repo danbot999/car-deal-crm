@@ -12,7 +12,8 @@ from urllib.parse import quote_plus, urljoin, urlsplit
 import requests
 from bs4 import BeautifulSoup, Tag
 
-from ..config import SOURCE_RESULT_LIMIT, SOURCE_TIMEOUT_SECONDS, USER_AGENT
+from ..config import MAX_PORTAL_PAGES, SOURCE_TIMEOUT_SECONDS, USER_AGENT
+from ..matching import same_identity
 from ..normalization import (
     NormalizedVehicle,
     canonical_url,
@@ -30,7 +31,9 @@ from ..normalization import (
 from .base import RawListing, SearchResult
 
 
-BLOCKED_RE = re.compile(r"(?i)(captcha|verify\s+you\s+are\s+human|access\s+denied|unusual\s+traffic|temporarily\s+blocked)")
+BLOCKED_RE = re.compile(
+    r"(?i)(verify\s+you\s+are\s+human|access\s+denied|unusual\s+traffic|temporarily\s+blocked)"
+)
 
 
 @dataclass(frozen=True)
@@ -164,7 +167,8 @@ class ConfiguredPortalAdapter:
         response = self.session.get(url, timeout=SOURCE_TIMEOUT_SECONDS, allow_redirects=True)
         response.raise_for_status()
         text = response.text
-        if BLOCKED_RE.search(text[:50_000]):
+        visible_text = BeautifulSoup(text, "html.parser").get_text(" ", strip=True)[:20_000]
+        if BLOCKED_RE.search(visible_text):
             raise RuntimeError("Source returned a login, CAPTCHA, or blocking page.")
         return text
 
@@ -179,7 +183,11 @@ class ConfiguredPortalAdapter:
                 continue
             for obj in iter_json_objects(payload):
                 listing = listing_from_jsonld(self.source_id, obj, page_url, self.config.seller_type)
-                if listing:
+                if (
+                    listing
+                    and self.config.detail_pattern.search(urlsplit(listing.url).path)
+                    and same_identity(target, listing)
+                ):
                     found[listing.url] = listing
         for anchor in soup.find_all("a", href=True):
             url = canonical_url(urljoin(page_url, str(anchor.get("href"))))
@@ -192,9 +200,7 @@ class ConfiguredPortalAdapter:
                 rejected += 1
                 continue
             vehicle = vehicle_from_text(text, supplied={})
-            if target.make and vehicle.make and target.make.lower() != vehicle.make.lower():
-                continue
-            if target.model and vehicle.model and target.model.lower() not in vehicle.model.lower() and vehicle.model.lower() not in target.model.lower():
+            if not same_identity(target, vehicle):
                 continue
             title = clean_text(anchor.get("title") or anchor.get_text(" ", strip=True)) or text[:250]
             found.setdefault(
@@ -208,9 +214,17 @@ class ConfiguredPortalAdapter:
                     seller_type=self.config.seller_type, raw_facts={"cardText": text[:2000]},
                 ),
             )
-            if len(found) >= SOURCE_RESULT_LIMIT:
-                break
-        return list(found.values())[:SOURCE_RESULT_LIMIT], rejected
+        return list(found.values()), rejected
+
+    @staticmethod
+    def next_pages(html: str, page_url: str) -> list[str]:
+        soup = BeautifulSoup(html, "html.parser")
+        candidates: list[str] = []
+        for anchor in soup.find_all("a", href=True):
+            label = clean_text(f"{anchor.get_text(' ', strip=True)} {anchor.get('aria-label') or ''}")
+            if anchor.get("rel") == ["next"] or re.search(r"(?i)\bnext\b", label):
+                candidates.append(urljoin(page_url, str(anchor.get("href"))))
+        return list(dict.fromkeys(candidates))
 
     def search(self, target: NormalizedVehicle, deadline: float) -> SearchResult:
         result = SearchResult(source_id=self.source_id)
@@ -218,11 +232,28 @@ class ConfiguredPortalAdapter:
             result.status = "SKIPPED"
             result.error = "Live-search deadline reached."
             return result
-        url = self.config.search_builder(target)
+        pending = [self.config.search_builder(target)]
+        visited: set[str] = set()
+        found: dict[str, RawListing] = {}
         try:
-            html = self.fetch(url)
-            result.pages_scanned = 1
-            result.listings, result.rejected = self.parse(html, url, target)
+            while pending and result.pages_scanned < MAX_PORTAL_PAGES and time.monotonic() < deadline:
+                url = pending.pop(0)
+                if url in visited:
+                    continue
+                visited.add(url)
+                html = self.fetch(url)
+                listings, rejected = self.parse(html, url, target)
+                for listing in listings:
+                    found[listing.url] = listing
+                result.rejected += rejected
+                result.pages_scanned += 1
+                pending.extend(
+                    candidate for candidate in self.next_pages(html, url)
+                    if candidate not in visited and candidate not in pending
+                )
+                if pending and self.config.crawl_delay_seconds:
+                    time.sleep(min(self.config.crawl_delay_seconds, max(0, deadline - time.monotonic())))
+            result.listings = list(found.values())
             result.status = "SUCCESS"
         except Exception as error:
             result.status = "FAILED"

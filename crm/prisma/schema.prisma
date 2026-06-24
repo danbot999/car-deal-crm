@@ -53,6 +53,15 @@ model Listing {
   marketRelation       String?
   marketVerdict        String?
   marketConfidence     String?
+  marketValuationMethod String?
+  marketRawMedianCents Int?
+  marketExactComparableCount Int @default(0)
+  marketAdjustmentJson String?
+  marketCoverageJson   String?
+  marketSearchIdentity String?
+  marketSearchStage    String        @default("QUEUED")
+  marketSearchProgressJson String?
+  marketConfigurationWarning String?
   marketReason         String?
   marketTargetSellCents Int?
   marketMaxBuyCents    Int?
@@ -105,6 +114,8 @@ model Listing {
   @@index([marketValuationStatus])
   @@index([marketVerdict])
   @@index([marketValuedAt])
+  @@index([marketSearchStage])
+  @@index([marketSearchIdentity])
 }
 
 model AdminFlip {

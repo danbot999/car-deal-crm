@@ -24,6 +24,7 @@ type ValuationButtonProps = {
   kmsConfidence?: number | null;
   listingId: string;
   maxBuyPriceCents?: number | null;
+  marketValueCents?: number | null;
   numberPlate?: string | null;
   numberPlateConfidence?: number | null;
   profitabilitySummary?: string | null;
@@ -128,6 +129,7 @@ export function ValuationButton({
   kmsConfidence,
   listingId,
   maxBuyPriceCents,
+  marketValueCents,
   numberPlate,
   numberPlateConfidence,
   profitabilitySummary,
@@ -148,7 +150,9 @@ export function ValuationButton({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [hasValuation, setHasValuation] = useState(valuationCents != null);
+  const [hasValuation, setHasValuation] = useState(
+    valuationCents != null || marketValueCents != null
+  );
   const [message, setMessage] = useState<string | null>(null);
   const actionLabel =
     actionLabels[recommendedAction ?? ""] ??
@@ -193,7 +197,7 @@ export function ValuationButton({
 
   async function runEvaluation() {
     if (!hasValuation) {
-      setMessage("Add Trade Me value first.");
+      setMessage("Wait for the market estimate or add a Trade Me value first.");
       return;
     }
 
@@ -341,7 +345,10 @@ export function ValuationButton({
               Deal math
             </p>
             <div className="mt-4 grid gap-3">
-              <Metric label="Trade Me value" value={formatMoney(valuationCents)} />
+              <Metric
+                label={valuationCents != null ? "Trade Me value" : "Market estimate"}
+                value={formatMoney(valuationCents ?? marketValueCents)}
+              />
               <Metric
                 label="Target sell"
                 value={formatMoney(targetSellPriceCents)}
@@ -371,7 +378,7 @@ export function ValuationButton({
             ) : null}
             {!hasValuation ? (
               <p className="mt-3 text-xs font-medium text-amber-700">
-                Add Trade Me value first.
+                A market estimate or manual Trade Me value is required first.
               </p>
             ) : null}
             {message ? (

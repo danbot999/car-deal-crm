@@ -9,7 +9,7 @@ from urllib.parse import quote_plus, urljoin, urlsplit
 
 import requests
 
-from ..config import SOURCE_RESULT_LIMIT, SOURCE_TIMEOUT_SECONDS, USER_AGENT
+from ..config import SOURCE_TIMEOUT_SECONDS, USER_AGENT
 from ..normalization import NormalizedVehicle, canonical_url, clean_text
 from .base import SearchResult
 from .directories import public_web_url
@@ -24,8 +24,8 @@ INVENTORY_PATH_RE = re.compile(
 class GenericDealerAdapter:
     source_id = "generic_dealers"
 
-    def __init__(self, sites: list[tuple[str, str | None]], max_sites: int = 12) -> None:
-        self.sites = sites[:max_sites]
+    def __init__(self, sites: list[tuple[str, str | None]]) -> None:
+        self.sites = sites
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "en-NZ,en;q=0.9"})
 
@@ -55,8 +55,6 @@ class GenericDealerAdapter:
                 candidates.append(url)
             elif INVENTORY_PATH_RE.search(urlsplit(url).path) and make and make in lowered:
                 candidates.append(url)
-            if len(candidates) >= 8:
-                break
         return candidates
 
     def search(self, target: NormalizedVehicle, deadline: float) -> SearchResult:
@@ -64,7 +62,7 @@ class GenericDealerAdapter:
         found = {}
         errors: list[str] = []
         for base_url, dealer_name in self.sites:
-            if time.monotonic() >= deadline or len(found) >= SOURCE_RESULT_LIMIT:
+            if time.monotonic() >= deadline:
                 break
             host = urlsplit(base_url).hostname or "dealer"
             config = PortalConfig(
@@ -78,7 +76,7 @@ class GenericDealerAdapter:
             parser = ConfiguredPortalAdapter(config)
             query_url = f"{base_url.rstrip('/')}?s={quote_plus(query_text(target))}"
             page_urls = [query_url, *self._sitemap_candidates(base_url, target)]
-            for page_url in list(dict.fromkeys(page_urls))[:6]:
+            for page_url in list(dict.fromkeys(page_urls)):
                 if time.monotonic() >= deadline:
                     break
                 try:
@@ -96,7 +94,7 @@ class GenericDealerAdapter:
                 except (requests.RequestException, RuntimeError) as error:
                     errors.append(f"{host}: {clean_text(error)}")
             time.sleep(0.5)
-        result.listings = list(found.values())[:SOURCE_RESULT_LIMIT]
+        result.listings = list(found.values())
         if result.listings or (self.sites and result.pages_scanned):
             result.status = "SUCCESS"
         elif not self.sites:

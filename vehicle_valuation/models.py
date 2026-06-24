@@ -106,6 +106,33 @@ class PriceObservation(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ComparableSearch(Base):
+    __tablename__ = "comparable_searches"
+    __table_args__ = (Index("ix_search_status_updated", "status", "updated_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    identity_key: Mapped[str] = mapped_column(String(300), unique=True, index=True)
+    target_year: Mapped[int | None] = mapped_column(Integer)
+    make: Mapped[str | None] = mapped_column(String(120), index=True)
+    model: Mapped[str | None] = mapped_column(String(180), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="QUEUED", index=True)
+    stage: Mapped[str] = mapped_column(String(80), default="IDENTIFYING_VEHICLE")
+    progress_json: Mapped[str | None] = mapped_column(Text)
+    coverage_json: Mapped[str | None] = mapped_column(Text)
+    exact_count: Mapped[int] = mapped_column(Integer, default=0)
+    broader_count: Mapped[int] = mapped_column(Integer, default=0)
+    valuation_method: Mapped[str | None] = mapped_column(String(60))
+    raw_median_cents: Mapped[int | None] = mapped_column(Integer)
+    adjusted_estimate_cents: Mapped[int | None] = mapped_column(Integer)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cache_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class TargetVehicle(Base):
     __tablename__ = "target_vehicles"
 
@@ -128,6 +155,9 @@ class TargetVehicle(Base):
     image_urls_json: Mapped[str | None] = mapped_column(Text)
     extraction_evidence_json: Mapped[str | None] = mapped_column(Text)
     extraction_confidence: Mapped[str] = mapped_column(String(30), default="LOW")
+    field_confidence_json: Mapped[str | None] = mapped_column(Text)
+    identity_key: Mapped[str | None] = mapped_column(String(300), index=True)
+    search_id: Mapped[str | None] = mapped_column(ForeignKey("comparable_searches.id"), index=True)
     source_payload_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -142,6 +172,10 @@ class ValuationJob(Base):
     status: Mapped[str] = mapped_column(String(40), default="PENDING", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     priority: Mapped[int] = mapped_column(Integer, default=100)
+    search_id: Mapped[str | None] = mapped_column(ForeignKey("comparable_searches.id"), index=True)
+    progress_stage: Mapped[str] = mapped_column(String(80), default="QUEUED")
+    progress_json: Mapped[str | None] = mapped_column(Text)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -157,6 +191,7 @@ class ScrapeRun(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     job_id: Mapped[str | None] = mapped_column(ForeignKey("valuation_jobs.id"), index=True)
+    search_id: Mapped[str | None] = mapped_column(ForeignKey("comparable_searches.id"), index=True)
     source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
     status: Mapped[str] = mapped_column(String(40))
     pages_scanned: Mapped[int] = mapped_column(Integer, default=0)
@@ -174,6 +209,7 @@ class ValuationRun(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     target_id: Mapped[str] = mapped_column(ForeignKey("target_vehicles.id", ondelete="CASCADE"), index=True)
     job_id: Mapped[str | None] = mapped_column(ForeignKey("valuation_jobs.id"))
+    search_id: Mapped[str | None] = mapped_column(ForeignKey("comparable_searches.id"), index=True)
     status: Mapped[str] = mapped_column(String(40))
     market_value_cents: Mapped[int | None] = mapped_column(Integer)
     comparable_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -192,6 +228,11 @@ class ValuationRun(Base):
     sources_attempted: Mapped[int] = mapped_column(Integer, default=0)
     sources_successful: Mapped[int] = mapped_column(Integer, default=0)
     source_breakdown_json: Mapped[str | None] = mapped_column(Text)
+    coverage_json: Mapped[str | None] = mapped_column(Text)
+    valuation_method: Mapped[str | None] = mapped_column(String(60))
+    raw_median_cents: Mapped[int | None] = mapped_column(Integer)
+    exact_comparable_count: Mapped[int] = mapped_column(Integer, default=0)
+    adjustment_json: Mapped[str | None] = mapped_column(Text)
     criteria_json: Mapped[str | None] = mapped_column(Text)
     algorithm_version: Mapped[str] = mapped_column(String(40), default="1.0.0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

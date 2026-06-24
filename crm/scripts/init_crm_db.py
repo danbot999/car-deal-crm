@@ -70,6 +70,15 @@ MARKET_VALUATION_COLUMNS = {
     "marketRelation": "TEXT",
     "marketVerdict": "TEXT",
     "marketConfidence": "TEXT",
+    "marketValuationMethod": "TEXT",
+    "marketRawMedianCents": "INTEGER",
+    "marketExactComparableCount": "INTEGER NOT NULL DEFAULT 0",
+    "marketAdjustmentJson": "TEXT",
+    "marketCoverageJson": "TEXT",
+    "marketSearchIdentity": "TEXT",
+    "marketSearchStage": "TEXT NOT NULL DEFAULT 'QUEUED'",
+    "marketSearchProgressJson": "TEXT",
+    "marketConfigurationWarning": "TEXT",
     "marketReason": "TEXT",
     "marketTargetSellCents": "INTEGER",
     "marketMaxBuyCents": "INTEGER",
@@ -139,6 +148,12 @@ def ensure_columns(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         'CREATE INDEX IF NOT EXISTS "Listing_marketValuedAt_idx" ON "Listing"("marketValuedAt")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "Listing_marketSearchStage_idx" ON "Listing"("marketSearchStage")'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS "Listing_marketSearchIdentity_idx" ON "Listing"("marketSearchIdentity")'
     )
 
 

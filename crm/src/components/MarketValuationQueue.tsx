@@ -10,6 +10,12 @@ type QueueJob = {
   status: string;
   attempts: number;
   lastError: string | null;
+  progressStage?: string | null;
+  progress?: {
+    sourcesCompleted?: number;
+    sourcesTotal?: number;
+    comparablesFound?: number;
+  };
   title: string;
   facebookUrl: string;
   askingPriceCents: number;
@@ -89,8 +95,15 @@ export function MarketValuationQueue() {
                       {formatMoney(job.askingPriceCents)}
                       {job.lastError ? ` | ${job.lastError}` : ""}
                     </p>
+                    {job.progressStage ? (
+                      <p className="mt-1 text-xs font-semibold text-cyan-700">
+                        {job.progressStage.replaceAll("_", " ").toLowerCase()}
+                        {job.progress?.comparablesFound != null ? ` | ${job.progress.comparablesFound} candidates` : ""}
+                        {job.progress?.sourcesTotal ? ` | ${job.progress.sourcesCompleted ?? 0}/${job.progress.sourcesTotal} sources` : ""}
+                      </p>
+                    ) : null}
                   </div>
-                  {job.status === "FAILED" || job.status === "INSUFFICIENT_DATA" ? (
+                  {job.status === "RETRY" || job.status === "EXPANDING_SEARCH" ? (
                     <button
                       className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
                       disabled={busyId === job.id}

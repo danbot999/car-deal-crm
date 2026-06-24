@@ -233,9 +233,8 @@ def row_needs_import(
 
     existing = crm_state.get(str(row["url"]))
     if existing is None:
-        # Once the market-index service is installed, new n8n rows are published
-        # by the valuation endpoint only after comparable evidence is available.
-        return not VALUATION_DB.exists()
+        # Active cars stay visible while the market-index worker researches them.
+        return True
 
     return not existing.get("thumbnailPath")
 

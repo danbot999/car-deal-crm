@@ -77,7 +77,7 @@ def discover_directory(definition: dict[str, object], deadline: float) -> Discov
         links = page_links(response.text, response.url)
         profile_urls = [url for url, _label in links if (urlsplit(url).hostname or "").lower() == base_host and PROFILE_RE.search(urlsplit(url).path)]
         all_links = list(links)
-        for profile_url in list(dict.fromkeys(profile_urls))[:12]:
+        for profile_url in list(dict.fromkeys(profile_urls)):
             if time.monotonic() >= deadline:
                 break
             try:
