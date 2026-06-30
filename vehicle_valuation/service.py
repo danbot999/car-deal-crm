@@ -194,7 +194,10 @@ def publish_to_crm(payload: dict[str, Any]) -> dict[str, str]:
                 f"{base_url}/api/ingest/valuations",
                 headers={"Authorization": f"Bearer {token}"},
                 json=payload,
-                timeout=90,
+                # The local dashboard is the critical path. Cloud failures stay
+                # in the outbox and retry later instead of occupying a worker
+                # for a minute and a half.
+                timeout=15,
             )
             response.raise_for_status()
             results[base_url] = "ok"
