@@ -12,5 +12,14 @@ if (-not (Test-Path $n8n)) {
 New-Item -ItemType Directory -Force -Path (Join-Path $crmRoot "work") | Out-Null
 Set-Location $crmRoot
 
-& $n8n start 1>> $stdout 2>> $stderr
-exit $LASTEXITCODE
+$process = Start-Process `
+    -FilePath $n8n `
+    -ArgumentList "start" `
+    -WorkingDirectory $crmRoot `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $stdout `
+    -RedirectStandardError $stderr `
+    -PassThru
+
+$process.WaitForExit()
+exit $process.ExitCode

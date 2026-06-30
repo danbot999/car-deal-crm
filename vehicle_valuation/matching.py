@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .normalization import NormalizedVehicle, normalize_token
+from .normalization import (
+    NormalizedVehicle,
+    engine_capacity_band,
+    normalize_token,
+    price_family,
+)
 
 
 @dataclass
@@ -32,6 +37,16 @@ def compatible(target_value: str | None, item_value: str | None) -> bool:
     return normalize_token(target_value) == normalize_token(item_value)
 
 
+def same_price_identity(target: NormalizedVehicle, item: Any) -> bool:
+    if price_family(target) != price_family(item):
+        return False
+    target_engine = engine_capacity_band(target)
+    item_engine = engine_capacity_band(item)
+    if target_engine and item_engine and abs(target_engine - item_engine) > 250:
+        return False
+    return True
+
+
 def match_comparable(target: NormalizedVehicle, item: Any) -> MatchResult:
     if not same_identity(target, item):
         return MatchResult(False, None, 0, "make_model_mismatch")
@@ -39,6 +54,8 @@ def match_comparable(target: NormalizedVehicle, item: Any) -> MatchResult:
         return MatchResult(False, None, 0, "not_fixed_price")
     if getattr(item, "status", "ACTIVE") not in {"ACTIVE", "HISTORICAL"}:
         return MatchResult(False, None, 0, "inactive")
+    if not same_price_identity(target, item):
+        return MatchResult(False, None, 0, "price_sensitive_variant_mismatch")
 
     item_year = getattr(item, "year", None)
     item_kms = getattr(item, "kms", None)

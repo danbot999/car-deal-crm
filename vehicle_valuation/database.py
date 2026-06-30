@@ -7,6 +7,7 @@ from typing import Iterator
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import QueuePool
 
 from .config import valuation_database_url
 from .models import Base
@@ -14,7 +15,10 @@ from .models import Base
 
 DATABASE_URL = valuation_database_url()
 CONNECT_ARGS = {"check_same_thread": False, "timeout": 30} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=CONNECT_ARGS, pool_pre_ping=True)
+ENGINE_ARGS = {"connect_args": CONNECT_ARGS, "pool_pre_ping": True}
+if DATABASE_URL.startswith("sqlite"):
+    ENGINE_ARGS.update({"poolclass": QueuePool, "pool_size": 1, "max_overflow": 0})
+engine = create_engine(DATABASE_URL, **ENGINE_ARGS)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
 
@@ -25,6 +29,7 @@ if DATABASE_URL.startswith("sqlite"):
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")
         cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.execute("PRAGMA wal_autocheckpoint=1000")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 

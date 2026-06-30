@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import re
+import threading
 from base64 import b64encode
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,8 +19,13 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 from rapidocr_onnxruntime import RapidOCR
 
-from .config import USER_AGENT, openai_settings
+from .config import USER_AGENT, WORK_DIR, openai_settings, openai_vision_daily_limit
 from .normalization import NormalizedVehicle, clean_text, parse_kms, vehicle_from_text
+
+
+VISION_USAGE_PATH = WORK_DIR / "openai-vision-usage.json"
+VISION_AUTH_FAILURE_PATH = WORK_DIR / "openai-vision-auth-failure.json"
+VISION_USAGE_LOCK = threading.Lock()
 
 
 @dataclass
@@ -113,10 +120,58 @@ def extract_openai_json(payload: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def claim_vision_request() -> tuple[bool, int, int]:
+    from datetime import datetime, timezone
+
+    limit = openai_vision_daily_limit()
+    today = datetime.now(timezone.utc).date().isoformat()
+    with VISION_USAGE_LOCK:
+        try:
+            usage = json.loads(VISION_USAGE_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            usage = {}
+        count = int(usage.get("count", 0)) if usage.get("date") == today else 0
+        if count >= limit:
+            return False, count, limit
+        count += 1
+        VISION_USAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        temporary = VISION_USAGE_PATH.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"date": today, "count": count, "limit": limit}), encoding="utf-8")
+        temporary.replace(VISION_USAGE_PATH)
+        return True, count, limit
+
+
+def key_fingerprint(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+
+
+def auth_is_blocked(api_key: str) -> bool:
+    try:
+        state = json.loads(VISION_AUTH_FAILURE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return state.get("keyFingerprint") == key_fingerprint(api_key)
+
+
+def record_auth_failure(api_key: str) -> None:
+    VISION_AUTH_FAILURE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = VISION_AUTH_FAILURE_PATH.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps({"keyFingerprint": key_fingerprint(api_key), "status": 401}),
+        encoding="utf-8",
+    )
+    temporary.replace(VISION_AUTH_FAILURE_PATH)
+
+
 def ai_vehicle_extract(title: str, text: str, image_urls: list[str]) -> tuple[dict[str, Any] | None, str | None]:
     api_key, model = openai_settings()
     if not api_key:
         return None, "OPENAI_API_KEY is not configured"
+    if auth_is_blocked(api_key):
+        return None, "OpenAI vision authentication is blocked after HTTP 401; replace OPENAI_API_KEY to retry"
+    allowed, count, limit = claim_vision_request()
+    if not allowed:
+        return None, f"OpenAI vision daily safety limit reached ({count}/{limit})"
     schema = {
         "type": "object",
         "additionalProperties": False,
@@ -164,6 +219,9 @@ def ai_vehicle_extract(title: str, text: str, image_urls: list[str]) -> tuple[di
         response.raise_for_status()
         return extract_openai_json(response.json()), None
     except Exception as error:
+        response = getattr(error, "response", None)
+        if getattr(response, "status_code", None) == 401:
+            record_auth_failure(api_key)
         return None, clean_text(error)[:500]
 
 

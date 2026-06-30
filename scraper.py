@@ -18,6 +18,12 @@ import config
 
 
 FACEBOOK_BASE_URL = "https://www.facebook.com"
+LAST_SCAN_DIAGNOSTICS: dict[str, Any] = {
+    "attemptedUrls": 0,
+    "successfulUrls": 0,
+    "failedUrls": 0,
+    "fatalError": None,
+}
 MODERN_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -464,6 +470,7 @@ async def _collect_candidates_from_search_url(
                 f"[LOG] Search URL yielded {len(candidates)} candidate(s): {search_url}",
                 flush=True,
             )
+            LAST_SCAN_DIAGNOSTICS["successfulUrls"] += 1
             return candidates
         except PlaywrightTimeoutError as exc:
             print(
@@ -483,6 +490,7 @@ async def _collect_candidates_from_search_url(
         if attempt < retries and retry_backoff_ms:
             await asyncio.sleep(retry_backoff_ms / 1000)
 
+    LAST_SCAN_DIAGNOSTICS["failedUrls"] += 1
     return []
 
 
@@ -490,6 +498,9 @@ async def collect_search_candidates(context: Any) -> list[ListingCandidate]:
     """Collect and dedupe candidates across this scan's broader search batch."""
     candidates_by_url: dict[str, ListingCandidate] = {}
     search_urls = _target_urls_for_scan()
+    LAST_SCAN_DIAGNOSTICS.update(
+        attemptedUrls=len(search_urls), successfulUrls=0, failedUrls=0, fatalError=None
+    )
     print(
         f"[LOG] Scanning {len(search_urls)} Marketplace search URL(s) this cycle.",
         flush=True,
@@ -504,6 +515,11 @@ async def collect_search_candidates(context: Any) -> list[ListingCandidate]:
         flush=True,
     )
     return list(candidates_by_url.values())
+
+
+def get_last_scan_diagnostics() -> dict[str, Any]:
+    """Return source-access diagnostics for the most recent scan."""
+    return dict(LAST_SCAN_DIAGNOSTICS)
 
 
 def verify_listing_detail(
@@ -736,9 +752,11 @@ async def fetch_marketplace_listings() -> list[Listing]:
                 await browser.close()
     except PlaywrightTimeoutError as exc:
         print(f"[ERROR] Facebook Marketplace navigation timed out: {exc}", flush=True)
+        LAST_SCAN_DIAGNOSTICS["fatalError"] = str(exc)[:500]
         return []
     except Exception as exc:
         print(f"[ERROR] Marketplace scan failed safely: {exc}", flush=True)
+        LAST_SCAN_DIAGNOSTICS["fatalError"] = str(exc)[:500]
         return []
 
     try:

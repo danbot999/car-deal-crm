@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
+
+from runtime_health import write_heartbeat
 
 from .config import (
     DIRECTORY_REFRESH_SECONDS, INDEX_REFRESH_SECONDS, INDEX_TARGET_LIMIT,
@@ -51,6 +54,14 @@ def acquire_worker_lock() -> bool:
 
 def timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def heartbeat_loop(state: dict[str, object], lock: threading.Lock) -> None:
+    while True:
+        with lock:
+            snapshot = dict(state)
+        write_heartbeat("valuation-worker", "healthy", **snapshot)
+        time.sleep(15)
 
 
 def work_once() -> bool:
@@ -111,6 +122,14 @@ def run_daemon() -> None:
     last_index_refresh = 0.0
     last_directory_refresh = 0.0
     futures: dict[Future[dict[str, object]], str] = {}
+    heartbeat_state: dict[str, object] = {"activeJobs": 0, "lastReconcileAgeSeconds": None}
+    heartbeat_lock = threading.Lock()
+    threading.Thread(
+        target=heartbeat_loop,
+        args=(heartbeat_state, heartbeat_lock),
+        name="valuation-heartbeat",
+        daemon=True,
+    ).start()
     with ThreadPoolExecutor(max_workers=MAX_GROUP_WORKERS) as executor:
         while True:
             for future, job_id in list(futures.items()):
@@ -124,6 +143,10 @@ def run_daemon() -> None:
 
             if time.monotonic() - last_reconcile >= RECONCILE_SECONDS:
                 try:
+                    with session_scope() as session:
+                        recovered = recover_stale_work(session)
+                    if any(recovered.values()):
+                        print(f"[VALUATION] {timestamp()} recovered stale work: {recovered}", flush=True)
                     queued = reconcile_n8n()
                     print(f"[VALUATION] {timestamp()} reconciled {queued} n8n rows", flush=True)
                 except Exception as error:
@@ -138,6 +161,14 @@ def run_daemon() -> None:
                 futures[future] = job_id
 
             publish_once()
+
+            with heartbeat_lock:
+                heartbeat_state.update({
+                    "activeJobs": len(futures),
+                    "lastReconcileAgeSeconds": (
+                        round(time.monotonic() - last_reconcile, 1) if last_reconcile else None
+                    ),
+                })
 
             if not futures and time.monotonic() - last_index_refresh >= INDEX_REFRESH_SECONDS:
                 try:

@@ -104,9 +104,25 @@ TRIM_RE = re.compile(
     r"(?i)\b(?:black\s+edition|limited|sport|sports|turbo|gt|gts|sti|wrx|gx|glx|lx|rs|"
     r"type\s+r|m[-\s]*sport|highline|comfortline|trendline|4wd|awd|manual|automatic|diesel|petrol|hybrid)\b"
 )
+PERFORMANCE_RE = re.compile(
+    r"(?i)\b(?:mazdaspeed|mps|wrx|sti|type\s*r|gti|gtd|r32|rs3|rs4|rs5|rs6|"
+    r"amg|evo(?:lution)?|srt|svt|nismo|m[1-8]|turbo\s+sport)\b"
+)
+HYBRID_RE = re.compile(r"(?i)\b(?:hybrid|phev|plug[ -]?in)\b")
+ELECTRIC_RE = re.compile(r"(?i)\b(?:electric|bev|ev)\b")
+DIESEL_RE = re.compile(r"(?i)\b(?:diesel|tdi|crdi|cdi|d4d)\b")
+ENGINE_CC_RE = re.compile(r"(?i)\b(\d{3,4})\s*cc\b")
+ENGINE_LITRE_RE = re.compile(r"(?i)\b([1-6](?:\.\d)?)\s*(?:l|litre|liter)\b")
 BMW_BADGE_RE = re.compile(
     r"(?i)\b(m[1-8]|[1-8][1-8]\d\s*(?:l\s*)?(?:d|i|e|xi|xd|ci|is))\b"
 )
+
+MODEL_YEAR_BOUNDS: dict[tuple[str, str], tuple[int, int | None]] = {
+    ("mazda", "axela"): (2003, None),
+    ("mazda", "atenza"): (2002, None),
+    ("nissan", "leaf"): (2010, None),
+    ("toyota", "aqua"): (2011, None),
+}
 
 
 @dataclass
@@ -197,6 +213,63 @@ def normalize_bmw_badge(value: str | None) -> str:
 def detect_bmw_badge(text: str) -> str | None:
     match = BMW_BADGE_RE.search(text)
     return normalize_bmw_badge(match.group(1)) if match else None
+
+
+def model_year_is_plausible(vehicle: NormalizedVehicle) -> bool:
+    if vehicle.year is None:
+        return False
+    key = (normalize_token(vehicle.make) or "", normalize_token(vehicle.model) or "")
+    bounds = MODEL_YEAR_BOUNDS.get(key)
+    if not bounds:
+        return 1970 <= vehicle.year <= datetime_now_year() + 1
+    minimum, maximum = bounds
+    return vehicle.year >= minimum and (maximum is None or vehicle.year <= maximum)
+
+
+def datetime_now_year() -> int:
+    # Kept local to avoid making model normalization dependent on system locale.
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).year
+
+
+def price_family(value: NormalizedVehicle | Any) -> str:
+    make = normalize_token(getattr(value, "make", None)) or ""
+    model = normalize_token(getattr(value, "model", None)) or ""
+    variant = clean_text(getattr(value, "variant", None))
+    title = clean_text(getattr(value, "title", None))
+    fuel = normalize_token(getattr(value, "fuel_type", None)) or ""
+    combined = clean_text(f"{title} {variant} {fuel}")
+    if make == "bmw" and model.endswith("series"):
+        badge = detect_bmw_badge(combined)
+        if badge:
+            return f"BMW_BADGE:{badge}"
+    if PERFORMANCE_RE.search(combined):
+        return "PERFORMANCE"
+    if ELECTRIC_RE.search(combined) or fuel == "electric":
+        return "ELECTRIC"
+    if HYBRID_RE.search(combined) or fuel == "hybrid":
+        return "HYBRID"
+    if DIESEL_RE.search(combined) or fuel == "diesel":
+        return "DIESEL"
+    return "STANDARD"
+
+
+def engine_capacity_band(value: NormalizedVehicle | Any) -> int | None:
+    combined = clean_text(
+        f"{getattr(value, 'title', '')} {getattr(value, 'variant', '')}"
+    )
+    cc_match = ENGINE_CC_RE.search(combined)
+    if cc_match:
+        cc = int(cc_match.group(1))
+    else:
+        litre_match = ENGINE_LITRE_RE.search(combined)
+        if not litre_match:
+            return None
+        cc = round(float(litre_match.group(1)) * 1000)
+    if not 600 <= cc <= 8000:
+        return None
+    return round(cc / 250) * 250
 
 
 def normalize_model(value: str | None, make: str | None = None) -> str | None:
@@ -395,10 +468,14 @@ def identity_key(vehicle: NormalizedVehicle) -> str | None:
     if not make or not model:
         return None
     year = str(vehicle.year) if vehicle.year else "unknown"
-    variant = normalize_token(vehicle.variant)
-    if make == "bmw" and model.endswith("series") and variant:
-        return f"{year}|{make}|{model}|{variant}"
-    return f"{year}|{make}|{model}"
+    family = normalize_token(price_family(vehicle)) or "standard"
+    if family.startswith("bmw badge "):
+        family = family.removeprefix("bmw badge ")
+    engine = engine_capacity_band(vehicle)
+    parts = [year, make, model, family]
+    if engine:
+        parts.append(str(engine))
+    return "|".join(parts)
 
 
 def canonical_url(url: str) -> str:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from sqlalchemy import select
@@ -11,6 +11,7 @@ from sqlalchemy import select
 from .config import shared_token
 from .database import init_database, session_scope
 from .models import ValuationJob
+from .health import valuation_health
 from .repositories import (
     coverage_summary, latest_valuation, queue_target, retry_job, seed_sources,
     valuation_comparables,
@@ -51,8 +52,8 @@ def job_response(job: ValuationJob) -> JobResponse:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    return valuation_health()
 
 
 @app.post("/v1/jobs", response_model=JobResponse, status_code=202, dependencies=[Depends(authorize)])

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 type AppNavProps = {
-  active: "home" | "dashboard" | "leads" | "admin" | "market-evidence";
+  active: "home" | "dashboard" | "leads" | "admin" | "market-evidence" | "system-health";
 };
 
 export function AppNav({ active }: AppNavProps) {
@@ -22,7 +22,7 @@ export function AppNav({ active }: AppNavProps) {
           Marketplace research, valuation, and lead due diligence.
         </p>
       </div>
-      <div className="flex rounded-full border border-slate-200 bg-white/60 p-1 shadow-sm shadow-slate-200/70">
+      <div className="flex flex-wrap rounded-3xl border border-slate-200 bg-white/60 p-1 shadow-sm shadow-slate-200/70">
         <Link className={linkClass("home")} href="/">
           Home
         </Link>
@@ -37,6 +37,9 @@ export function AppNav({ active }: AppNavProps) {
         </Link>
         <Link className={linkClass("leads")} href="/leads">
           Leads
+        </Link>
+        <Link className={linkClass("system-health")} href="/system-health">
+          System Health
         </Link>
       </div>
     </nav>

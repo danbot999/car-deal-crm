@@ -12,7 +12,8 @@ from typing import Any
 import requests
 
 import config
-from scraper import fetch_marketplace_listings
+from runtime_health import write_heartbeat
+from scraper import fetch_marketplace_listings, get_last_scan_diagnostics
 
 
 REQUEST_TIMEOUT_SECONDS = 30
@@ -107,9 +108,10 @@ def _post_payload(payload: dict[str, Any]) -> int:
     return response.status_code
 
 
-async def run_scan() -> None:
+async def run_scan() -> dict[str, Any]:
     """Run one scan and transmit only verified active cars to n8n."""
     scanned_items = await fetch_marketplace_listings()
+    source_diagnostics = get_last_scan_diagnostics()
     items = [item for item in scanned_items if is_publishable_item(item)]
     payload = {"items": items}
     by_status: dict[str, int] = {}
@@ -124,14 +126,24 @@ async def run_scan() -> None:
             f"[ERROR] Scanned {len(items)} items, but n8n transmission failed: {exc}",
             flush=True,
         )
-        return
+        return {
+            "scanned": len(scanned_items), "published": 0,
+            "rejected": len(scanned_items), "availability": by_status,
+            "n8nStatus": None, "error": str(exc)[:500],
+            "sourceDiagnostics": source_diagnostics,
+        }
     except Exception as exc:
         print(
             f"[ERROR] Unexpected n8n transmission failure after scanning "
             f"{len(items)} items: {exc}",
             flush=True,
         )
-        return
+        return {
+            "scanned": len(scanned_items), "published": 0,
+            "rejected": len(scanned_items), "availability": by_status,
+            "n8nStatus": None, "error": str(exc)[:500],
+            "sourceDiagnostics": source_diagnostics,
+        }
 
     print(
         f"[LOG] Scanned {len(scanned_items)} items {by_status}; sent "
@@ -140,6 +152,19 @@ async def run_scan() -> None:
         f"to n8n (HTTP {status_code}).",
         flush=True,
     )
+    return {
+        "scanned": len(scanned_items),
+        "published": len(items),
+        "rejected": len(scanned_items) - len(items),
+        "availability": by_status,
+        "n8nStatus": status_code,
+        "sourceDiagnostics": source_diagnostics,
+        "error": (
+            "Marketplace source access failed for one or more configured searches"
+            if source_diagnostics.get("failedUrls") or source_diagnostics.get("fatalError")
+            else None
+        ),
+    }
 
 
 async def main() -> None:
@@ -149,15 +174,23 @@ async def main() -> None:
         f"[LOG] Marketplace monitor started. Scanning every {interval} seconds.",
         flush=True,
     )
+    write_heartbeat("marketplace-monitor", "starting", intervalSeconds=interval)
 
     while True:
         scan_started_at = time.monotonic()
         try:
-            await run_scan()
+            result = await run_scan()
+            heartbeat_status = (
+                "healthy"
+                if result.get("n8nStatus") and not result.get("error")
+                else "degraded"
+            )
+            write_heartbeat("marketplace-monitor", heartbeat_status, **result)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             print(f"[ERROR] Scan loop recovered from an unexpected error: {exc}", flush=True)
+            write_heartbeat("marketplace-monitor", "degraded", error=str(exc)[:500])
 
         elapsed = time.monotonic() - scan_started_at
         await asyncio.sleep(max(0.0, interval - elapsed))

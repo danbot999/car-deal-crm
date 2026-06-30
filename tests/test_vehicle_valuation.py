@@ -222,19 +222,21 @@ class MatchingAndValuationTests(unittest.TestCase):
         self.assertEqual(verdict_for_percentage(-5)[0], "OVERPRICED")
         self.assertEqual(verdict_for_percentage(-10.01)[0], "VERY_OVERPRICED")
 
-    def test_exact_uses_every_same_year_make_model_listing(self) -> None:
+    def test_exact_requires_a_safe_multi_source_cohort(self) -> None:
         items = [
             comparable("a", 1_500_000, kms=40_000, model="Corolla", url_suffix="a"),
-            comparable("b", 1_900_000, kms=240_000, model="Corolla", url_suffix="b"),
-            comparable("c", 1_700_000, kms=120_000, model="Corolla", url_suffix="c"),
+            comparable("a", 1_900_000, kms=240_000, model="Corolla", url_suffix="b"),
+            comparable("b", 1_700_000, kms=120_000, model="Corolla", url_suffix="c"),
+            comparable("b", 1_600_000, kms=140_000, model="Corolla", url_suffix="d"),
+            comparable("c", 1_800_000, kms=90_000, model="Corolla", url_suffix="e"),
         ]
         items[0].variant = "GLX"
         items[1].variant = "GX"
         result = value_vehicle(self.target, 1_400_000, items)
         self.assertEqual(result.method, "EXACT")
-        self.assertEqual(result.comparable_count, 3)
+        self.assertEqual(result.comparable_count, 5)
         self.assertEqual(result.market_value_cents, 1_700_000)
-        self.assertEqual(result.confidence, "EXACT_LOW")
+        self.assertEqual(result.confidence, "EXACT_MEDIUM")
 
     def test_bmw_series_exact_requires_engine_badge(self) -> None:
         target = NormalizedVehicle(
@@ -256,7 +258,7 @@ class MatchingAndValuationTests(unittest.TestCase):
             variant="740i",
         )
         result = value_vehicle(target, 620_000, [wrong_badge])
-        self.assertEqual(result.status, "EXPANDING_SEARCH")
+        self.assertEqual(result.status, "AWAITING_SAFE_EVIDENCE")
         self.assertEqual(result.exact_count, 0)
         self.assertIsNone(result.market_value_cents)
 
@@ -271,32 +273,44 @@ class MatchingAndValuationTests(unittest.TestCase):
             model="7 Series",
             variant="730d",
         )
-        result = value_vehicle(target, 620_000, [wrong_badge, right_badge])
+        right_badges = [
+            RawListing(
+                source_id="trademe" if index < 3 else "dealer",
+                source_listing_id=f"730d-{index}",
+                url=f"https://example.test/730d-{index}",
+                title="2009 BMW 730d",
+                asking_price_cents=680_000 + index * 10_000,
+                year=2009,
+                make="BMW",
+                model="7 Series",
+                variant="730d",
+            )
+            for index in range(5)
+        ]
+        result = value_vehicle(target, 620_000, [wrong_badge, *right_badges])
         self.assertEqual(result.status, "VALUED")
         self.assertEqual(result.method, "EXACT")
-        self.assertEqual(result.exact_count, 1)
+        self.assertEqual(result.exact_count, 5)
         self.assertEqual(result.market_value_cents, 700_000)
         self.assertIn("730d", result.reason)
 
-    def test_generation_and_class_fallbacks_always_remain_numeric(self) -> None:
+    def test_generation_and_class_fallbacks_are_not_publishable(self) -> None:
         generation = [
             comparable("g1", 1_700_000, year=2017, url_suffix="g1"),
             comparable("g2", 1_900_000, year=2019, url_suffix="g2"),
             comparable("g3", 1_850_000, year=2019, url_suffix="g3"),
         ]
         generation_result = value_vehicle(self.target, 1_500_000, generation)
-        self.assertEqual(generation_result.status, "PROVISIONAL")
-        self.assertEqual(generation_result.method, "GENERATION_ADJUSTED")
-        self.assertIsNotNone(generation_result.market_value_cents)
+        self.assertEqual(generation_result.status, "AWAITING_SAFE_EVIDENCE")
+        self.assertIsNone(generation_result.market_value_cents)
 
         different_model = [
             comparable(f"class-{index}", 1_600_000 + index * 10_000, model="Camry", url_suffix=f"class-{index}")
             for index in range(8)
         ]
         class_result = value_vehicle(self.target, 1_500_000, different_model)
-        self.assertEqual(class_result.status, "PROVISIONAL")
-        self.assertIn(class_result.method, {"MAKE_CLASS_PROVISIONAL", "CLASS_PROVISIONAL"})
-        self.assertIsNotNone(class_result.market_value_cents)
+        self.assertEqual(class_result.status, "AWAITING_SAFE_EVIDENCE")
+        self.assertIsNone(class_result.market_value_cents)
 
     def test_known_year_never_uses_far_newer_same_model_as_median(self) -> None:
         old_target = NormalizedVehicle(
@@ -308,21 +322,66 @@ class MatchingAndValuationTests(unittest.TestCase):
             for index in range(12)
         ]
         result = value_vehicle(old_target, 500_000, far_newer)
-        self.assertEqual(result.status, "EXPANDING_SEARCH")
+        self.assertEqual(result.status, "AWAITING_SAFE_EVIDENCE")
         self.assertIsNone(result.market_value_cents)
         self.assertIn("far-newer", result.reason)
 
     def test_incomplete_identity_waits_instead_of_using_all_inventory(self) -> None:
         vague = NormalizedVehicle(title="Car for sale", make=None, model=None, year=None)
         result = value_vehicle(vague, 500_000, [comparable("all", 2_000_000)])
-        self.assertEqual(result.status, "EXPANDING_SEARCH")
+        self.assertEqual(result.status, "AWAITING_SAFE_EVIDENCE")
         self.assertIsNone(result.market_value_cents)
         self.assertIn("year, make, and model", result.reason)
 
     def test_empty_index_keeps_expanding_instead_of_terminal_failure(self) -> None:
         result = value_vehicle(self.target, 1_500_000, [])
-        self.assertEqual(result.status, "EXPANDING_SEARCH")
+        self.assertEqual(result.status, "AWAITING_SAFE_EVIDENCE")
         self.assertIsNone(result.market_value_cents)
+
+    def test_implausible_axela_year_is_quarantined(self) -> None:
+        target = vehicle_from_text("2002 Mazda Axela")
+        newer = [
+            RawListing(
+                source_id="trademe" if index < 3 else "dealer",
+                source_listing_id=str(index),
+                url=f"https://example.test/axela/{index}",
+                title="2014 Mazda Axela",
+                asking_price_cents=1_400_000,
+                year=2014,
+                make="Mazda",
+                model="Axela",
+            )
+            for index in range(6)
+        ]
+        result = value_vehicle(target, 350_000, newer)
+        self.assertEqual(result.status, "AWAITING_SAFE_EVIDENCE")
+        self.assertIsNone(result.market_value_cents)
+        self.assertIn("not plausible", result.reason)
+
+    def test_standard_axela_excludes_hybrid_and_mps(self) -> None:
+        target = vehicle_from_text("2013 Mazda Axela", "Petrol automatic")
+        items = []
+        for index in range(5):
+            item = RawListing(
+                source_id="trademe" if index < 3 else "dealer",
+                source_listing_id=f"standard-{index}",
+                url=f"https://example.test/standard/{index}",
+                title="2013 Mazda Axela Petrol Automatic",
+                asking_price_cents=900_000 + index * 10_000,
+                year=2013,
+                make="Mazda",
+                model="Axela",
+                fuel_type="PETROL",
+            )
+            items.append(item)
+        items.extend([
+            RawListing(source_id="trademe", source_listing_id="hybrid", url="https://example.test/hybrid", title="2013 Mazda Axela Hybrid", asking_price_cents=1_700_000, year=2013, make="Mazda", model="Axela", fuel_type="HYBRID"),
+            RawListing(source_id="trademe", source_listing_id="mps", url="https://example.test/mps", title="2013 Mazda Axela MPS", asking_price_cents=2_000_000, year=2013, make="Mazda", model="Axela", fuel_type="PETROL"),
+        ])
+        result = value_vehicle(target, 500_000, items)
+        self.assertEqual(result.status, "VALUED")
+        self.assertEqual(result.comparable_count, 5)
+        self.assertEqual(result.market_value_cents, 920_000)
 
 
 class QueueLifecycleTests(unittest.TestCase):
@@ -344,6 +403,7 @@ class QueueLifecycleTests(unittest.TestCase):
                 market_value_cents=1_850_000,
                 comparable_count=8,
                 reason="fixture",
+                algorithm_version="3.0.0",
                 created_at=utcnow(),
             ))
             session.commit()

@@ -26,7 +26,8 @@ from .scrapers.catalog import source_definitions
 from .scrapers.directories import DiscoveryResult
 from .valuation import ValuationResult
 
-ALGORITHM_VERSION = "2.0.0"
+ALGORITHM_VERSION = "3.0.0"
+MAX_OPERATIONAL_ATTEMPTS = 6
 
 
 def stable_crm_listing_id(url: str) -> str:
@@ -157,7 +158,10 @@ def queue_target(session: Session, request: TargetRequest, priority: int = 100, 
 
     existing = session.scalar(
         select(ValuationJob)
-        .where(ValuationJob.target_id == target.id, ValuationJob.status.in_(["PENDING", "RUNNING", "RETRY", "EXPANDING_SEARCH"]))
+        .where(
+            ValuationJob.target_id == target.id,
+            ValuationJob.status.in_(["PENDING", "RUNNING", "RETRY", "EXPANDING_SEARCH", "AWAITING_SAFE_EVIDENCE"]),
+        )
         .order_by(ValuationJob.created_at.desc())
     )
     if existing:
@@ -184,7 +188,11 @@ def queue_target(session: Session, request: TargetRequest, priority: int = 100, 
     cutoff = utcnow() - timedelta(hours=24)
     if latest_run and latest_run.created_at and latest_run.created_at.tzinfo is None:
         cutoff = cutoff.replace(tzinfo=None)
-    valuation_is_fresh = bool(latest_run and latest_run.created_at >= cutoff)
+    valuation_is_fresh = bool(
+        latest_run
+        and latest_run.created_at >= cutoff
+        and latest_run.algorithm_version == ALGORITHM_VERSION
+    )
     if latest_job and valuation_is_fresh and not materially_changed and not force:
         return latest_job
     job = ValuationJob(
@@ -203,7 +211,7 @@ def claim_next_job(session: Session) -> ValuationJob | None:
     job = session.scalar(
         select(ValuationJob)
         .where(
-            ValuationJob.status.in_(["PENDING", "RETRY", "EXPANDING_SEARCH"]),
+            ValuationJob.status.in_(["PENDING", "RETRY", "EXPANDING_SEARCH", "AWAITING_SAFE_EVIDENCE"]),
             or_(ValuationJob.next_retry_at.is_(None), ValuationJob.next_retry_at <= utcnow()),
             or_(ValuationJob.search_id.is_(None), ValuationJob.search_id.not_in(running_searches)),
         )
@@ -330,16 +338,21 @@ def fail_job(session: Session, job_id: str, error: str) -> None:
     job = session.get(ValuationJob, job_id)
     if job is None:
         return
-    job.status = "RETRY"
     job.last_error = clean_text(error)[:4000]
-    job.progress_stage = "RETRYING"
-    job.next_retry_at = utcnow() + timedelta(minutes=min(60, 2 ** min(job.attempts, 5)))
+    if job.attempts >= MAX_OPERATIONAL_ATTEMPTS:
+        job.status = "QUARANTINED"
+        job.progress_stage = "QUARANTINED"
+        job.next_retry_at = None
+    else:
+        job.status = "RETRY"
+        job.progress_stage = "RETRYING"
+        job.next_retry_at = utcnow() + timedelta(minutes=min(60, 2 ** min(job.attempts, 5)))
     job.completed_at = None
     if job.search_id:
         search = session.get(ComparableSearch, job.search_id)
         if search:
-            search.status = "RETRYING"
-            search.stage = "RETRYING"
+            search.status = job.status
+            search.stage = job.progress_stage
             search.last_error = job.last_error
 
 
@@ -566,7 +579,7 @@ def save_valuation(
             accepted=decision.match.accepted, match_tier=decision.match.tier,
             match_score=decision.match.score, exclusion_reason=decision.match.reason,
         ))
-    if result.status in {"VALUED", "PROVISIONAL"}:
+    if result.status == "VALUED":
         job.status = "COMPLETED"
         job.progress_stage = "COMPLETED"
         job.completed_at = utcnow()
@@ -586,16 +599,16 @@ def save_valuation(
                 search.cache_expires_at = utcnow() + timedelta(hours=SEARCH_CACHE_HOURS)
                 search.last_error = None
     else:
-        job.status = "EXPANDING_SEARCH"
-        job.progress_stage = "EXPANDING_SEARCH"
+        job.status = result.status
+        job.progress_stage = result.status
         job.completed_at = None
         job.last_error = result.reason
-        job.next_retry_at = utcnow() + timedelta(minutes=10)
+        job.next_retry_at = utcnow() + timedelta(hours=6)
         if job.search_id:
             search = session.get(ComparableSearch, job.search_id)
             if search:
-                search.status = "EXPANDING_SEARCH"
-                search.stage = "EXPANDING_SEARCH"
+                search.status = result.status
+                search.stage = result.status
                 search.last_error = result.reason
     session.flush()
     return run

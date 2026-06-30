@@ -81,3 +81,11 @@ def openai_settings() -> tuple[str, str]:
         values.get("OPENAI_API_KEY", ""),
         values.get("OPENAI_MODEL", "gpt-4o-mini"),
     )
+
+
+def openai_vision_daily_limit() -> int:
+    values = combined_env()
+    try:
+        return max(0, int(values.get("OPENAI_VISION_DAILY_LIMIT", "50")))
+    except ValueError:
+        return 50

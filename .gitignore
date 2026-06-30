@@ -19,6 +19,10 @@ work/*.log
 work/*.lock
 work/*.sqlite
 work/scan_state.json
+work/heartbeats/
+work/system-health.json
+work/automation-incident-state.json
+work/*.jsonl
 
 # Local secrets
 .env

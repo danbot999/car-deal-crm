@@ -25,7 +25,7 @@ from .models import (
 )
 from .normalization import NormalizedVehicle
 from .repositories import (
-    active_dealer_sites, comparable_candidates, enqueue_publication, fail_job,
+    ALGORITHM_VERSION, active_dealer_sites, comparable_candidates, enqueue_publication, fail_job,
     ensure_search_for_target, finish_publication, latest_valuation, queue_target, recent_targets,
     record_discovery_result, record_search_result, save_valuation, seed_sources,
     update_job_progress,
@@ -148,7 +148,7 @@ def publish_payload(target: TargetVehicle, run, comparables: list[dict[str, Any]
         "marketAdjustmentJson": run.adjustment_json,
         "marketCoverageJson": run.coverage_json,
         "marketSearchIdentity": target.identity_key,
-        "marketSearchStage": "COMPLETED" if run.status in {"VALUED", "PROVISIONAL"} else "EXPANDING_SEARCH",
+        "marketSearchStage": "COMPLETED" if run.status == "VALUED" else run.status,
         "marketSearchProgressJson": run.coverage_json,
         "marketConfigurationWarning": extraction_evidence.get("configurationWarning"),
         "marketReason": run.reason,
@@ -159,7 +159,7 @@ def publish_payload(target: TargetVehicle, run, comparables: list[dict[str, Any]
         "marketSourcesSuccessful": run.sources_successful,
         "marketSourceBreakdownJson": run.source_breakdown_json,
         "marketComparablesJson": json.dumps(comparables, default=str),
-        "marketValuedAt": run.created_at.isoformat(),
+        "marketValuedAt": run.created_at.isoformat() if run.status == "VALUED" else None,
         "marketValuationRunId": run.id,
     }
 
@@ -261,7 +261,7 @@ def backfill_publication_outbox() -> int:
             target = session.get(TargetVehicle, run.target_id)
             if target is None:
                 continue
-            if run.valuation_method != "EXACT" and run.algorithm_version != "2.0.0":
+            if run.algorithm_version != ALGORITHM_VERSION:
                 continue
             evidence_rows = list(session.scalars(
                 select(ValuationComparable)
@@ -571,10 +571,21 @@ def reconcile_n8n(limit: int = 500) -> int:
             f'SELECT title, price, url, firstSeen FROM "{table}" ORDER BY id DESC LIMIT ?',
             (limit,),
         ).fetchall()
+    active_urls: set[str] | None = None
+    if CRM_DATABASE_PATH.exists():
+        with sqlite3.connect(CRM_DATABASE_PATH, timeout=30) as crm_connection:
+            active_urls = {
+                str(row[0])
+                for row in crm_connection.execute(
+                    "SELECT facebookUrl FROM Listing WHERE availabilityStatus='ACTIVE' AND status NOT IN ('SOLD','ARCHIVED')"
+                )
+            }
     queued = 0
     with session_scope() as session:
         seed_sources(session)
         for row in rows:
+            if active_urls is not None and str(row["url"]) not in active_urls:
+                continue
             request = TargetRequest(
                 facebookUrl=row["url"], title=row["title"], price=float(row["price"]),
                 sourcePayload={"firstSeen": row["firstSeen"]},

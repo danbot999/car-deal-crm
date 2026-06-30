@@ -8,9 +8,11 @@ from statistics import median
 from typing import Any, Iterable
 
 from .dedupe import deduplicate
-from .matching import MatchResult, compatible, same_identity
-from .normalization import NormalizedVehicle, normalize_token
+from .matching import MatchResult, compatible, same_identity, same_price_identity
+from .normalization import NormalizedVehicle, model_year_is_plausible, normalize_token, price_family
 
+MIN_SAFE_EXACT_COMPARABLES = 5
+MIN_SAFE_SOURCES = 2
 MIN_GENERATION_COMPARABLES = 3
 MIN_MODEL_ADJUSTED_COMPARABLES = 5
 MIN_MAKE_CLASS_COMPARABLES = 8
@@ -82,7 +84,12 @@ def year_delta(target: NormalizedVehicle, item: Any) -> int | None:
 
 
 def has_core_identity(target: NormalizedVehicle) -> bool:
-    return bool(normalize_token(target.make) and normalize_token(target.model) and target.year)
+    return bool(
+        normalize_token(target.make)
+        and normalize_token(target.model)
+        and target.year
+        and model_year_is_plausible(target)
+    )
 
 
 def requires_variant_match(target: NormalizedVehicle) -> bool:
@@ -90,9 +97,27 @@ def requires_variant_match(target: NormalizedVehicle) -> bool:
 
 
 def same_required_variant(target: NormalizedVehicle, item: Any) -> bool:
-    if not requires_variant_match(target):
-        return True
-    return compatible(target.variant, getattr(item, "variant", None))
+    return same_price_identity(target, item)
+
+
+def robust_price_items(items: list[Any]) -> tuple[list[Any], set[int]]:
+    if len(items) < 7:
+        return items, set()
+    middle = float(median(int(item.asking_price_cents) for item in items))
+    deviations = [abs(int(item.asking_price_cents) - middle) for item in items]
+    mad = float(median(deviations))
+    threshold = max(middle * 0.50, mad * 3.5, 100_000)
+    accepted = [item for item in items if abs(int(item.asking_price_cents) - middle) <= threshold]
+    rejected = {id(item) for item in items if item not in accepted}
+    return accepted, rejected
+
+
+def distinct_sources(items: list[Any]) -> set[str]:
+    return {
+        str(getattr(item, "source_id", "")).strip()
+        for item in items
+        if str(getattr(item, "source_id", "")).strip()
+    }
 
 
 def class_compatible(target: NormalizedVehicle, item: Any) -> bool:
@@ -153,8 +178,14 @@ def adjusted_prices(
 
 def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, list[Any], list[int], dict[str, Any]]:
     if not has_core_identity(target):
+        invalid_year = bool(target.year and target.make and target.model)
         return "EXPANDING_SEARCH", [], [], {
-            "reason": "A numeric market value needs a confirmed year, make, and model before comparables are trusted."
+            "reason": (
+                "The supplied year is not plausible for this model, so the listing is quarantined until its identity is verified."
+                if invalid_year
+                else "A numeric market value needs a confirmed year, make, and model before comparables are trusted."
+            ),
+            "safeStatus": "AWAITING_SAFE_EVIDENCE",
         }
 
     exact_model = [item for item in items if usable(item) and same_identity(target, item)]
@@ -163,17 +194,42 @@ def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, lis
         item for item in exact_identity
         if target.year is not None and getattr(item, "year", None) == target.year
     ]
-    if exact_year:
+    exact_year, outlier_ids = robust_price_items(exact_year)
+    exact_sources = distinct_sources(exact_year)
+    if len(exact_year) >= MIN_SAFE_EXACT_COMPARABLES and len(exact_sources) >= MIN_SAFE_SOURCES:
         prices = [int(item.asking_price_cents) for item in exact_year]
-        return "EXACT", exact_year, prices, {"rawMedianCents": round(median(prices))}
+        return "EXACT", exact_year, prices, {
+            "rawMedianCents": round(median(prices)),
+            "sourceCount": len(exact_sources),
+            "sources": sorted(exact_sources),
+            "statisticalOutliersExcluded": len(outlier_ids),
+            "priceFamily": price_family(target),
+        }
+    if exact_year or outlier_ids:
+        return "EXPANDING_SEARCH", [], [], {
+            "reason": (
+                f"Only {len(exact_year)} compatible same-year comparables from {len(exact_sources)} source(s) passed safety checks; "
+                f"at least {MIN_SAFE_EXACT_COMPARABLES} comparables from {MIN_SAFE_SOURCES} sources are required."
+            ),
+            "safeStatus": "AWAITING_SAFE_EVIDENCE",
+            "compatibleExactFound": len(exact_year),
+            "sourceCount": len(exact_sources),
+            "statisticalOutliersExcluded": len(outlier_ids),
+            "priceFamily": price_family(target),
+        }
 
     generation = [
         item for item in exact_identity
         if year_delta(target, item) is not None and year_delta(target, item) <= 2
     ]
     if len(generation) >= MIN_GENERATION_COMPARABLES:
-        adjusted, summary = adjusted_prices(target, generation, adjust_kms=True)
-        return "GENERATION_ADJUSTED", generation, adjusted, summary
+        _adjusted, summary = adjusted_prices(target, generation, adjust_kms=True)
+        return "EXPANDING_SEARCH", [], [], {
+            **summary,
+            "reason": "Near-year evidence exists, but only same-year compatible listings may publish a safe deal score.",
+            "safeStatus": "AWAITING_SAFE_EVIDENCE",
+            "nearGenerationFound": len(generation),
+        }
 
     model_window = [
         item for item in exact_identity
@@ -184,9 +240,11 @@ def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, lis
         len(model_window) >= MIN_MODEL_ADJUSTED_COMPARABLES
         and any((year_delta(target, item) or 99) <= 3 for item in model_window)
     ):
-        adjusted, summary = adjusted_prices(target, model_window, adjust_kms=True)
-        return "MODEL_ADJUSTED", model_window, adjusted, {
+        _adjusted, summary = adjusted_prices(target, model_window, adjust_kms=True)
+        return "EXPANDING_SEARCH", [], [], {
             **summary,
+            "reason": "Model evidence exists outside the exact year, but it is not safe enough to publish a deal score.",
+            "safeStatus": "AWAITING_SAFE_EVIDENCE",
             "yearWindow": f"+/-{MODEL_ADJUSTED_MAX_YEAR_DELTA}",
             "safetyRule": "Far-newer or far-older same-model listings are not used for known-year targets.",
         }
@@ -200,8 +258,11 @@ def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, lis
         and year_delta(target, item) <= 2
     ]
     if len(make_class) >= MIN_MAKE_CLASS_COMPARABLES:
-        adjusted, summary = adjusted_prices(target, make_class, adjust_kms=True)
-        return "MAKE_CLASS_PROVISIONAL", make_class, adjusted, summary
+        return "EXPANDING_SEARCH", [], [], {
+            "reason": "Only make/class evidence is available; it is retained for audit but cannot publish a valuation.",
+            "safeStatus": "AWAITING_SAFE_EVIDENCE",
+            "makeClassFound": len(make_class),
+        }
 
     nz_class = [
         item for item in items
@@ -211,8 +272,11 @@ def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, lis
         and year_delta(target, item) <= 2
     ]
     if len(nz_class) >= MIN_NZ_CLASS_COMPARABLES:
-        adjusted, summary = adjusted_prices(target, nz_class, adjust_kms=True)
-        return "CLASS_PROVISIONAL", nz_class, adjusted, summary
+        return "EXPANDING_SEARCH", [], [], {
+            "reason": "Only broad NZ class evidence is available; it is retained for audit but cannot publish a valuation.",
+            "safeStatus": "AWAITING_SAFE_EVIDENCE",
+            "nzClassFound": len(nz_class),
+        }
     return "EXPANDING_SEARCH", [], [], {
         "reason": (
             "No safe evidence cohort is ready yet. The worker will keep searching instead of using "
@@ -224,6 +288,7 @@ def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, lis
         "modelWindowFound": len(model_window),
         "makeClassFound": len(make_class),
         "nzClassFound": len(nz_class),
+        "safeStatus": "AWAITING_SAFE_EVIDENCE",
     }
 
 
@@ -251,6 +316,18 @@ def value_vehicle(target: NormalizedVehicle, asking_price_cents: int, items: Ite
         )
     )
     accepted_ids = {id(item) for item in accepted_items}
+
+    def exclusion_reason(item: Any) -> str:
+        if not usable(item):
+            return "not_usable_fixed_price"
+        if not same_identity(target, item):
+            return "make_model_mismatch"
+        if target.year != getattr(item, "year", None):
+            return "year_or_generation_mismatch"
+        if not same_price_identity(target, item):
+            return "price_sensitive_variant_mismatch"
+        return "outside_safe_evidence_cohort"
+
     decisions = [
         ComparableDecision(
             item=item,
@@ -258,7 +335,7 @@ def value_vehicle(target: NormalizedVehicle, asking_price_cents: int, items: Ite
                 id(item) in accepted_ids,
                 method if id(item) in accepted_ids else None,
                 100.0 if id(item) in accepted_ids else 0.0,
-                None if id(item) in accepted_ids else "outside_selected_evidence_cohort",
+                None if id(item) in accepted_ids else exclusion_reason(item),
             ),
         )
         for item in unique_items
@@ -270,7 +347,7 @@ def value_vehicle(target: NormalizedVehicle, asking_price_cents: int, items: Ite
             or "No usable prices are indexed yet; the worker will keep expanding the nationwide search."
         )
         return ValuationResult(
-            status="EXPANDING_SEARCH", market_value_cents=None, comparable_count=0,
+            status=str(adjustment.get("safeStatus") or "AWAITING_SAFE_EVIDENCE"), market_value_cents=None, comparable_count=0,
             lowest_cents=None, highest_cents=None, auckland_median_cents=None,
             difference_cents=None, difference_percent=None, relation=None, verdict=None,
             confidence="SEARCHING", reason=reason,
@@ -310,7 +387,7 @@ def value_vehicle(target: NormalizedVehicle, asking_price_cents: int, items: Ite
             f"${raw_median / 100:,.0f}."
         )
     return ValuationResult(
-        status="VALUED" if method == "EXACT" else "PROVISIONAL",
+        status="VALUED",
         market_value_cents=market_value,
         comparable_count=len(accepted_items),
         lowest_cents=min(raw_prices), highest_cents=max(raw_prices),

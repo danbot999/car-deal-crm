@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import ctypes
 import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,13 @@ from check_marketplace_availability import connect_crm_db
 from check_marketplace_availability import load_candidate_rows
 from import_n8n_listings import import_rows
 from sync_cloud_crm import sync_cloud_once
+
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from runtime_health import write_heartbeat  # noqa: E402
 
 
 LOCK_FILE = Path(__file__).resolve().parents[1] / "work" / "crm-sync.lock"
@@ -111,6 +119,7 @@ async def run_once(args: argparse.Namespace) -> dict[str, int]:
         refresh_existing=False,
     )
     print(f"[CRM SYNC] {timestamp()} {result}", flush=True)
+    write_heartbeat("crm-sync", "healthy", **result)
     return result
 
 
@@ -182,6 +191,7 @@ async def main() -> None:
                     )
         except Exception as error:
             print(f"[CRM SYNC] {timestamp()} failed: {error}", flush=True)
+            write_heartbeat("crm-sync", "degraded", error=str(error)[:500])
 
         if args.once:
             break
