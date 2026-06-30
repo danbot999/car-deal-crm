@@ -29,8 +29,9 @@ from scraper import _primary_detail_text  # noqa: E402
 CRM_DB = CRM_ROOT / "prisma" / "dev.db"
 SQLITE_TIMEOUT_SECONDS = 30
 SQLITE_BUSY_TIMEOUT_MS = 30_000
-DETAIL_TIMEOUT_MS = 35_000
-DETAIL_WAIT_MS = 2_500
+DETAIL_TIMEOUT_MS = 15_000
+DETAIL_WAIT_MS = 1_500
+AVAILABILITY_CONCURRENCY = 4
 VISIBLE_STATUSES = {"ACTIVE", "NEEDS_REVIEW", "POSSIBLY_SOLD", "UNKNOWN"}
 HIDDEN_STATUSES = {"CONFIRMED_SOLD", "SOLD", "UNAVAILABLE", "EXPIRED"}
 SOLD_LIKE_STATUSES = {"POSSIBLY_SOLD", "CONFIRMED_SOLD", "SOLD", "UNAVAILABLE"}
@@ -166,13 +167,16 @@ def load_candidate_rows(
               Listing.consecutiveUnavailableChecks,
               Listing.unavailableSince,
               Listing.lastCheckedAt,
-              Listing.lastVerifiedAt
+              Listing.lastVerifiedAt,
+              Listing.marketValuationStatus,
+              Listing.marketValuedAt
             FROM Listing
             LEFT JOIN AdminFlip ON AdminFlip.listingId = Listing.id
             WHERE facebookUrl LIKE '%/marketplace/item/%'
               AND {status_clause}
             ORDER BY
               CASE WHEN AdminFlip.id IS NULL THEN 1 ELSE 0 END,
+              CASE WHEN Listing.marketValuationStatus = 'VALUED' THEN 0 ELSE 1 END,
               CASE WHEN Listing.lastCheckedAt IS NULL THEN 0 ELSE 1 END,
               Listing.lastCheckedAt ASC,
               Listing.firstSeenAt DESC
@@ -185,12 +189,20 @@ def load_candidate_rows(
         filtered = rows
     else:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=stale_hours)
-        filtered = [
-            row
-            for row in rows
-            if (checked_at := parse_timestamp(row.get("lastCheckedAt"))) is None
-            or checked_at <= cutoff
-        ]
+        filtered = []
+        for row in rows:
+            checked_at = parse_timestamp(row.get("lastCheckedAt"))
+            valued_at_raw = row.get("marketValuedAt")
+            valued_at = None
+            if isinstance(valued_at_raw, (int, float)) and valued_at_raw > 0:
+                valued_at = datetime.fromtimestamp(valued_at_raw / 1000, tz=timezone.utc)
+            needs_post_valuation_check = bool(
+                row.get("marketValuationStatus") == "VALUED"
+                and valued_at
+                and (checked_at is None or checked_at < valued_at)
+            )
+            if needs_post_valuation_check or checked_at is None or checked_at <= cutoff:
+                filtered.append(row)
 
     return filtered[:limit] if limit else filtered
 
@@ -373,9 +385,15 @@ async def check_rows(
             locale="en-NZ",
             extra_http_headers={"Accept-Language": "en-NZ,en;q=0.9"},
         )
-        page = await context.new_page()
-        for index, row in enumerate(rows, 1):
-            result = await check_url(page, row["facebookUrl"])
+        semaphore = asyncio.Semaphore(AVAILABILITY_CONCURRENCY)
+
+        async def check_one(index: int, row: dict[str, Any]) -> dict[str, Any]:
+            async with semaphore:
+                page = await context.new_page()
+                try:
+                    result = await check_url(page, row["facebookUrl"])
+                finally:
+                    await page.close()
             if dry_run:
                 updated = update_listing(
                     None,
@@ -392,15 +410,17 @@ async def check_rows(
                     failure_threshold=failure_threshold,
                 )
 
-            results.append(updated)
             print(
                 "[AVAILABILITY] "
                 f"{index}/{len(rows)} {updated['nextStatus']} "
                 f"{console_text(str(row['title']))}",
                 flush=True,
             )
-            await asyncio.sleep(0.25)
+            return updated
 
+        results = list(await asyncio.gather(*(
+            check_one(index, row) for index, row in enumerate(rows, 1)
+        )))
         await context.close()
         await browser.close()
 

@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from scripts.crm_watchdog import process_health
 from scripts.valuation_quality_audit import safe_run, source_count
+from vehicle_valuation.service import queue_existing_crm
 
 
 class ValuationAuditTests(unittest.TestCase):
@@ -33,6 +34,9 @@ class ValuationAuditTests(unittest.TestCase):
         health = process_health("marketplace-monitor", 1_200)
         self.assertTrue(health["responsive"])
         self.assertFalse(health["healthy"])
+
+    def test_empty_targeted_requeue_does_not_requeue_every_listing(self) -> None:
+        self.assertEqual(queue_existing_crm(force=True, listing_ids=[]), 0)
 
 
 if __name__ == "__main__":

@@ -360,7 +360,10 @@ def run_watchdog(*, repair: bool) -> dict[str, Any]:
             from vehicle_valuation.service import queue_existing_crm
 
             cancelled = cancel_inactive_jobs()
-            queued = queue_existing_crm(force=True)
+            queued = queue_existing_crm(
+                force=True,
+                listing_ids=list(quality.get("listingIds") or []),
+            )
             quality["cancelledInactiveJobs"] = cancelled
             quality["queued"] = queued
             actions.append({"action": "requeue_safe_valuations", "queued": queued, "cancelledInactiveJobs": cancelled})

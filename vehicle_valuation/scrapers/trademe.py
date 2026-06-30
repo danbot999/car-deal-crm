@@ -24,7 +24,7 @@ from ..normalization import (
 from .base import RawListing, SearchResult
 
 
-_BROWSER_SLOTS = threading.BoundedSemaphore(2)
+_BROWSER_SLOTS = threading.BoundedSemaphore(4)
 _VISIBLE_BLOCK_RE = re.compile(
     r"(?i)(verify\s+you\s+are\s+human|access\s+denied|unusual\s+traffic|temporarily\s+blocked)"
 )
@@ -176,9 +176,9 @@ class TradeMeMotorsAdapter:
                     visited_pages.add(current_url)
                     try:
                         page.goto(current_url, wait_until="domcontentloaded", timeout=60_000)
-                        page.wait_for_timeout(4_000)
+                        page.wait_for_timeout(1_500)
                         page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        page.wait_for_timeout(1_000)
+                        page.wait_for_timeout(500)
                     except PlaywrightTimeoutError:
                         result.error = "A Trade Me result page timed out after partial collection."
                         break

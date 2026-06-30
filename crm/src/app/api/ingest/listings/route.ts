@@ -345,9 +345,10 @@ export async function POST(request: Request) {
 
   const existingRows = await prisma.listing.findMany({
     where: { facebookUrl: { in: items.map((item) => item.facebookUrl) } },
-    select: { facebookUrl: true }
+    select: { facebookUrl: true, lastCheckedAt: true, availabilityReason: true }
   });
   const existingUrls = new Set(existingRows.map((item) => item.facebookUrl));
+  const existingByUrl = new Map(existingRows.map((item) => [item.facebookUrl, item]));
   const storableItems = items.filter(
     (item) =>
       item.availabilityStatus === "ACTIVE" ||
@@ -356,8 +357,14 @@ export async function POST(request: Request) {
   const rejectedInactive = items.length - storableItems.length;
 
   await prisma.$transaction(
-    storableItems.map((item) =>
-      prisma.listing.upsert({
+    storableItems.map((item) => {
+      const existing = existingByUrl.get(item.facebookUrl);
+      const preserveNewerLocalAvailability = Boolean(
+        existing?.availabilityReason?.includes("user_confirmed_sold") ||
+        (existing?.lastCheckedAt &&
+          (!item.lastVerifiedAt || existing.lastCheckedAt > item.lastVerifiedAt))
+      );
+      return prisma.listing.upsert({
         where: { facebookUrl: item.facebookUrl },
         create: {
           facebookUrl: item.facebookUrl,
@@ -465,20 +472,20 @@ export async function POST(request: Request) {
           marketComparablesJson: item.marketComparablesJson,
           marketValuedAt: item.marketValuedAt,
           marketValuationRunId: item.marketValuationRunId,
-          availabilityStatus: item.availabilityStatus,
-          availabilityConfidence: item.availabilityConfidence,
-          availabilityReason: item.availabilityReason,
+          availabilityStatus: preserveNewerLocalAvailability ? undefined : item.availabilityStatus,
+          availabilityConfidence: preserveNewerLocalAvailability ? undefined : item.availabilityConfidence,
+          availabilityReason: preserveNewerLocalAvailability ? undefined : item.availabilityReason,
           lastSeenAt: item.lastSeenAt,
-          lastVerifiedAt: item.lastVerifiedAt,
+          lastVerifiedAt: preserveNewerLocalAvailability ? undefined : item.lastVerifiedAt,
           consecutiveUnavailableChecks:
-            item.availabilityStatus === "ACTIVE" ? 0 : undefined,
+            !preserveNewerLocalAvailability && item.availabilityStatus === "ACTIVE" ? 0 : undefined,
           unavailableCheckCount:
-            item.availabilityStatus === "ACTIVE" ? 0 : undefined,
+            !preserveNewerLocalAvailability && item.availabilityStatus === "ACTIVE" ? 0 : undefined,
           unavailableSince:
-            item.availabilityStatus === "ACTIVE" ? null : undefined
+            !preserveNewerLocalAvailability && item.availabilityStatus === "ACTIVE" ? null : undefined
         }
-      })
-    )
+      });
+    })
   );
 
   const created = storableItems.filter(

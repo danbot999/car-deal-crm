@@ -11,8 +11,8 @@ Set-Location $crmRoot
 
 & $python "scripts\sync_n8n_to_crm.py" `
     --interval-seconds 60 `
-    --availability-interval-seconds 600 `
-    --availability-limit 30 `
+    --availability-interval-seconds 60 `
+    --availability-limit 12 `
     --availability-stale-hours 6 `
     --cloud-sync-interval-seconds 600 `
     1>> $stdout `

@@ -111,7 +111,7 @@ def quarantine_unsafe(*, dry_run: bool = False) -> dict[str, Any]:
     return {
         "checked": len(listings),
         "quarantined": len(unsafe),
-        "listingIds": [str(row["id"]) for row in unsafe[:100]],
+        "listingIds": [str(row["id"]) for row in unsafe],
         "algorithmVersion": ALGORITHM_VERSION,
         "dryRun": dry_run,
     }
@@ -163,7 +163,10 @@ def main() -> None:
     result = quarantine_unsafe(dry_run=args.dry_run)
     if args.requeue and not args.dry_run:
         result["cancelledInactiveJobs"] = cancel_inactive_jobs()
-        result["queued"] = queue_existing_crm(force=True)
+        result["queued"] = queue_existing_crm(
+            force=True,
+            listing_ids=list(result.get("listingIds") or []),
+        )
     print(json.dumps(result, default=str, sort_keys=True))
 
 

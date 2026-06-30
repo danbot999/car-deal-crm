@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
@@ -36,6 +37,10 @@ from .scrapers.directories import discover_directory
 from .valuation import value_vehicle
 
 
+FAST_SOURCE_IDS = {"facebook_marketplace", "trademe_motors"}
+DB_WRITE_LOCK = threading.RLock()
+
+
 def target_vehicle(target: TargetVehicle) -> NormalizedVehicle:
     return NormalizedVehicle(
         title=target.title, year=target.year, make=target.make, model=target.model,
@@ -44,14 +49,26 @@ def target_vehicle(target: TargetVehicle) -> NormalizedVehicle:
     )
 
 
-def collect_sources(target: NormalizedVehicle, deadline: float, progress=None):
+def collect_sources(
+    target: NormalizedVehicle,
+    deadline: float,
+    progress=None,
+    *,
+    include_source_ids: set[str] | None = None,
+    exclude_source_ids: set[str] | None = None,
+):
     with session_scope() as session:
         dealer_sites = active_dealer_sites(session)
-    adapters = build_inventory_adapters(dealer_sites)
+    adapters = build_inventory_adapters(
+        dealer_sites,
+        include_source_ids=include_source_ids,
+        exclude_source_ids=exclude_source_ids,
+    )
     results = []
-    with ThreadPoolExecutor(max_workers=MAX_SOURCE_WORKERS) as executor:
-        futures = {executor.submit(adapter.search, target, deadline): adapter for adapter in adapters}
-        for future in as_completed(futures):
+    executor = ThreadPoolExecutor(max_workers=MAX_SOURCE_WORKERS)
+    futures = {executor.submit(adapter.search, target, deadline): adapter for adapter in adapters}
+    try:
+        for future in as_completed(futures, timeout=max(0.1, deadline - time.monotonic())):
             adapter = futures[future]
             try:
                 results.append(future.result())
@@ -60,10 +77,12 @@ def collect_sources(target: NormalizedVehicle, deadline: float, progress=None):
                 results.append(SearchResult(source_id=adapter.source_id, status="FAILED", error=str(error)))
             if progress:
                 progress(results[-1], len(results), len(adapters))
-            if time.monotonic() >= deadline:
-                for pending in futures:
-                    pending.cancel()
-                break
+    except FuturesTimeoutError:
+        pass
+    finally:
+        for pending in futures:
+            pending.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
     return results, len(adapters)
 
 
@@ -240,8 +259,9 @@ def deliver_publication(publication_id: str) -> dict[str, str]:
             raise KeyError(publication_id)
         payload = json.loads(publication.payload_json)
     results = publish_to_crm(payload)
-    with session_scope() as session:
-        finish_publication(session, publication_id, results)
+    with DB_WRITE_LOCK:
+        with session_scope() as session:
+            finish_publication(session, publication_id, results)
     return results
 
 
@@ -307,6 +327,44 @@ def backfill_publication_outbox() -> int:
     return created
 
 
+def persist_search_results(
+    job_id: str,
+    search_results: list[Any],
+    *,
+    stage: str | None = None,
+) -> tuple[int, list[dict[str, Any]], Any]:
+    """Store one search tier and immediately recalculate its safe cohort."""
+    with DB_WRITE_LOCK:
+        with session_scope() as session:
+            seed_sources(session)
+            job = session.get(ValuationJob, job_id)
+            if job is None:
+                raise KeyError(job_id)
+            successful = 0
+            coverage_items: list[dict[str, Any]] = []
+            for search_result in search_results:
+                record_search_result(session, job_id, search_result, job.search_id)
+                successful += int(search_result.status == "SUCCESS")
+                coverage_item = {
+                    "source": search_result.source_id,
+                    "status": search_result.status,
+                    "pagesScanned": search_result.pages_scanned,
+                    "recordsCollected": len(search_result.listings),
+                    "recordsRejected": search_result.rejected,
+                    "error": search_result.error,
+                }
+                if stage:
+                    coverage_item["stage"] = stage
+                coverage_items.append(coverage_item)
+            session.flush()
+            candidates = [
+                item for item in comparable_candidates(session, job.target)
+                if item.canonical_url != job.target.facebook_url
+            ]
+            result = value_vehicle(target_vehicle(job.target), job.target.asking_price_cents, candidates)
+    return successful, coverage_items, result
+
+
 def process_job(job_id: str) -> dict[str, Any]:
     with session_scope() as session:
         seed_sources(session)
@@ -328,24 +386,25 @@ def process_job(job_id: str) -> dict[str, Any]:
         except ValueError:
             seed_image_urls = []
         enrichment = enrich_target(target.title, target.facebook_url, supplied, seed_image_urls)
-        with session_scope() as session:
-            job = session.get(ValuationJob, job_id)
-            if job is None:
-                raise KeyError(job_id)
-            target = job.target
-            for key, value in enrichment.vehicle.to_dict().items():
-                field = {"fuel_type": "fuel_type", "body_type": "body_type"}.get(key, key)
-                if hasattr(target, field) and value is not None:
-                    setattr(target, field, value)
-            target.description = enrichment.description
-            target.image_urls_json = json.dumps(enrichment.image_urls)
-            target.extraction_evidence_json = json.dumps(enrichment.evidence, default=str)
-            target.extraction_confidence = enrichment.confidence
-            target.field_confidence_json = json.dumps(enrichment.evidence.get("fieldConfidence", {}), default=str)
-            search = ensure_search_for_target(session, target)
-            job.search_id = search.id
-            session.flush()
-            normalized = target_vehicle(target)
+        with DB_WRITE_LOCK:
+            with session_scope() as session:
+                job = session.get(ValuationJob, job_id)
+                if job is None:
+                    raise KeyError(job_id)
+                target = job.target
+                for key, value in enrichment.vehicle.to_dict().items():
+                    field = {"fuel_type": "fuel_type", "body_type": "body_type"}.get(key, key)
+                    if hasattr(target, field) and value is not None:
+                        setattr(target, field, value)
+                target.description = enrichment.description
+                target.image_urls_json = json.dumps(enrichment.image_urls)
+                target.extraction_evidence_json = json.dumps(enrichment.evidence, default=str)
+                target.extraction_confidence = enrichment.confidence
+                target.field_confidence_json = json.dumps(enrichment.evidence.get("fieldConfidence", {}), default=str)
+                search = ensure_search_for_target(session, target)
+                job.search_id = search.id
+                session.flush()
+                normalized = target_vehicle(target)
 
         deadline = time.monotonic() + LIVE_SEARCH_BUDGET_SECONDS
         with session_scope() as session:
@@ -358,8 +417,10 @@ def process_job(job_id: str) -> dict[str, Any]:
                 and search.cache_expires_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc)
             )
 
-        search_results = []
         attempted = 0
+        successful = 0
+        coverage_items: list[dict[str, Any]] = []
+        result = None
         if not cache_is_fresh:
             with session_scope() as session:
                 update_job_progress(session, job_id, "SEARCHING_EXACT_NZ_LISTINGS", comparablesFound=0)
@@ -369,13 +430,6 @@ def process_job(job_id: str) -> dict[str, Any]:
 
             def progress(result, completed, total):
                 progress_state["found"] += len(result.listings)
-                with session_scope() as progress_session:
-                    update_job_progress(
-                        progress_session, job_id, "SEARCHING_EXACT_NZ_LISTINGS",
-                        sourcesCompleted=completed, sourcesTotal=total,
-                        comparablesFound=progress_state["found"],
-                        latestSource=result.source_id,
-                    )
                 if completed == 1 or completed == total or completed % 3 == 0:
                     publish_job_progress(
                         job_id, "SEARCHING_EXACT_NZ_LISTINGS",
@@ -383,29 +437,41 @@ def process_job(job_id: str) -> dict[str, Any]:
                         comparablesFound=progress_state["found"], latestSource=result.source_id,
                     )
 
-            search_results, attempted = collect_sources(normalized, deadline, progress)
-        with session_scope() as session:
-            seed_sources(session)
-            job = session.get(ValuationJob, job_id)
-            if job is None:
-                raise KeyError(job_id)
-            successful = 0
-            coverage_items = []
-            for search_result in search_results:
-                record_search_result(session, job_id, search_result, job.search_id)
-                successful += int(search_result.status == "SUCCESS")
-                coverage_items.append({
-                    "source": search_result.source_id, "status": search_result.status,
-                    "pagesScanned": search_result.pages_scanned,
-                    "recordsCollected": len(search_result.listings),
-                    "recordsRejected": search_result.rejected, "error": search_result.error,
-                })
-            session.flush()
-            candidates = [
-                item for item in comparable_candidates(session, job.target)
-                if item.canonical_url != job.target.facebook_url
-            ]
-            result = value_vehicle(target_vehicle(job.target), job.target.asking_price_cents, candidates)
+            # Fast tier first: local Marketplace history plus Trade Me usually
+            # provides the required two-source exact cohort in seconds.
+            fast_results, fast_attempted = collect_sources(
+                normalized,
+                deadline,
+                progress,
+                include_source_ids=FAST_SOURCE_IDS,
+            )
+            attempted += fast_attempted
+            tier_successful, tier_coverage, result = persist_search_results(job_id, fast_results)
+            successful += tier_successful
+            coverage_items.extend(tier_coverage)
+
+            # Only pay for slower dealer portals when the fast tier cannot
+            # safely produce five compatible same-year comparables.
+            if result.method != "EXACT" and time.monotonic() < deadline - 15:
+                slow_results, slow_attempted = collect_sources(
+                    normalized,
+                    deadline,
+                    progress,
+                    exclude_source_ids=FAST_SOURCE_IDS,
+                )
+                attempted += slow_attempted
+                tier_successful, tier_coverage, result = persist_search_results(
+                    job_id,
+                    slow_results,
+                    stage="SUPPLEMENTAL_SOURCES",
+                )
+                successful += tier_successful
+                coverage_items.extend(tier_coverage)
+        else:
+            successful, coverage_items, result = persist_search_results(job_id, [])
+
+        if result is None:
+            raise RuntimeError("Valuation search did not produce a result")
 
         if result.method != "EXACT" and not cache_is_fresh and time.monotonic() < deadline - 20 and normalized.make and normalized.model:
             with session_scope() as session:
@@ -422,49 +488,42 @@ def process_job(job_id: str) -> dict[str, Any]:
                 variant=normalized.variant, kms=normalized.kms, transmission=normalized.transmission,
                 fuel_type=normalized.fuel_type, body_type=normalized.body_type, region=normalized.region,
             )
-            expanded_results, expanded_attempted = collect_sources(expanded, deadline)
+            expanded_results, expanded_attempted = collect_sources(
+                expanded,
+                deadline,
+                include_source_ids=FAST_SOURCE_IDS,
+            )
             attempted += expanded_attempted
+            tier_successful, tier_coverage, result = persist_search_results(
+                job_id,
+                expanded_results,
+                stage="EXPANDED_MODEL",
+            )
+            successful += tier_successful
+            coverage_items.extend(tier_coverage)
+
+        with DB_WRITE_LOCK:
             with session_scope() as session:
                 job = session.get(ValuationJob, job_id)
                 if job is None:
                     raise KeyError(job_id)
-                for search_result in expanded_results:
-                    record_search_result(session, job_id, search_result, job.search_id)
-                    successful += int(search_result.status == "SUCCESS")
-                    coverage_items.append({
-                        "source": search_result.source_id, "stage": "EXPANDED_MODEL",
-                        "status": search_result.status, "pagesScanned": search_result.pages_scanned,
-                        "recordsCollected": len(search_result.listings),
-                        "recordsRejected": search_result.rejected, "error": search_result.error,
-                    })
+                if cache_is_fresh:
+                    successful = 0
+                    coverage_items = [{"source": "GROUP_CACHE", "status": "SUCCESS"}]
+                publish_decisions, omitted_excluded = publishable_decisions(result.decisions)
+                coverage_payload = {
+                    "sources": coverage_items,
+                    "deadlineSeconds": LIVE_SEARCH_BUDGET_SECONDS,
+                    "acceptedComparableEvidenceRows": sum(1 for decision in publish_decisions if decision.match.accepted),
+                    "excludedEvidenceRowsSampled": sum(1 for decision in publish_decisions if not decision.match.accepted),
+                    "excludedEvidenceRowsStoredOnly": omitted_excluded,
+                }
+                run = save_valuation(
+                    session, job, result, attempted, successful,
+                    coverage_payload,
+                )
                 session.flush()
-                candidates = [
-                    item for item in comparable_candidates(session, job.target)
-                    if item.canonical_url != job.target.facebook_url
-                ]
-                result = value_vehicle(target_vehicle(job.target), job.target.asking_price_cents, candidates)
-
-        with session_scope() as session:
-            job = session.get(ValuationJob, job_id)
-            if job is None:
-                raise KeyError(job_id)
-            if cache_is_fresh:
-                successful = 0
-                coverage_items = [{"source": "GROUP_CACHE", "status": "SUCCESS"}]
-            publish_decisions, omitted_excluded = publishable_decisions(result.decisions)
-            coverage_payload = {
-                "sources": coverage_items,
-                "deadlineSeconds": LIVE_SEARCH_BUDGET_SECONDS,
-                "acceptedComparableEvidenceRows": sum(1 for decision in publish_decisions if decision.match.accepted),
-                "excludedEvidenceRowsSampled": sum(1 for decision in publish_decisions if not decision.match.accepted),
-                "excludedEvidenceRowsStoredOnly": omitted_excluded,
-            }
-            run = save_valuation(
-                session, job, result, attempted, successful,
-                coverage_payload,
-            )
-            session.flush()
-            evidence = [
+                evidence = [
                 {
                     "source": decision.item.source_id,
                     "title": decision.item.title,
@@ -485,16 +544,17 @@ def process_job(job_id: str) -> dict[str, Any]:
                     "accepted": decision.match.accepted,
                     "exclusionReason": decision.match.reason,
                 }
-                for decision in publish_decisions
-            ]
-            payload = publish_payload(job.target, run, evidence)
-            publication = enqueue_publication(session, run.id, payload)
-            publication_id = publication.id
+                    for decision in publish_decisions
+                ]
+                payload = publish_payload(job.target, run, evidence)
+                publication = enqueue_publication(session, run.id, payload)
+                publication_id = publication.id
         publish_results = deliver_publication(publication_id)
         return {"jobId": job_id, "status": result.status, "valuation": payload, "publish": publish_results}
     except Exception as error:
-        with session_scope() as session:
-            fail_job(session, job_id, str(error))
+        with DB_WRITE_LOCK:
+            with session_scope() as session:
+                fail_job(session, job_id, str(error))
         raise
 
 
@@ -502,9 +562,18 @@ def queue_existing_crm(
     limit: int | None = None,
     force: bool = False,
     skip_valued: bool = False,
+    listing_ids: list[str] | None = None,
 ) -> int:
     if not CRM_DATABASE_PATH.exists():
         return 0
+    requested_ids = [str(value) for value in (listing_ids or []) if str(value)]
+    if listing_ids is not None and not requested_ids:
+        return 0
+    id_clause = (
+        f"AND id IN ({','.join('?' for _ in requested_ids)})"
+        if requested_ids
+        else ""
+    )
     with sqlite3.connect(CRM_DATABASE_PATH, timeout=30) as connection:
         connection.row_factory = sqlite3.Row
         sql = """
@@ -515,14 +584,29 @@ def queue_existing_crm(
             WHERE availabilityStatus = 'ACTIVE'
               AND status NOT IN ('SOLD', 'ARCHIVED')
               {skip_clause}
+              {id_clause}
             ORDER BY firstSeenAt DESC
-        """.format(skip_clause="AND marketValuationStatus != 'VALUED'" if skip_valued else "")
+        """.format(
+            skip_clause="AND marketValuationStatus != 'VALUED'" if skip_valued else "",
+            id_clause=id_clause,
+        )
+        params: list[Any] = [*requested_ids]
+        if limit:
+            params.append(limit)
         try:
-            rows = connection.execute(sql + (" LIMIT ?" if limit else ""), (limit,) if limit else ()).fetchall()
+            rows = connection.execute(sql + (" LIMIT ?" if limit else ""), params).fetchall()
         except sqlite3.OperationalError:
+            fallback_id_clause = (
+                f" AND id IN ({','.join('?' for _ in requested_ids)})"
+                if requested_ids
+                else ""
+            )
             rows = connection.execute(
-                "SELECT id, facebookUrl, title, askingPriceCents, extractedYear, make, model, kms, numberPlate, listingDescription FROM Listing WHERE availabilityStatus='ACTIVE' ORDER BY firstSeenAt DESC" + (" LIMIT ?" if limit else ""),
-                (limit,) if limit else (),
+                "SELECT id, facebookUrl, title, askingPriceCents, extractedYear, make, model, kms, numberPlate, listingDescription FROM Listing WHERE availabilityStatus='ACTIVE'"
+                + fallback_id_clause
+                + " ORDER BY firstSeenAt DESC"
+                + (" LIMIT ?" if limit else ""),
+                params,
             ).fetchall()
     queued = 0
     with session_scope() as session:

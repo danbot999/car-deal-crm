@@ -47,7 +47,12 @@ def onlycars_search(target: NormalizedVehicle) -> str:
     return f"https://www.onlycars.co.nz/for-sale?keyword={quote_plus(query_text(target))}"
 
 
-def build_inventory_adapters(dealer_sites: list[tuple[str, str | None]] | None = None):
+def build_inventory_adapters(
+    dealer_sites: list[tuple[str, str | None]] | None = None,
+    *,
+    include_source_ids: set[str] | None = None,
+    exclude_source_ids: set[str] | None = None,
+):
     configs = [
         PortalConfig("needacar", "Need A Car", "https://www.needacar.co.nz", quoted_query_builder("https://www.needacar.co.nz/vehicles", "search"), re.compile(r"/(?:vehicle|vehicles)/[^?#]+", re.I), "DEALER", 2),
         PortalConfig("onlycars", "OnlyCars", "https://www.onlycars.co.nz", onlycars_search, re.compile(r"/for-sale/(?!type/|price/|body/|make/[^/]+/model/[^/]+/?$)[^?#]+", re.I), "DEALER", 2),
@@ -55,9 +60,14 @@ def build_inventory_adapters(dealer_sites: list[tuple[str, str | None]] | None =
         PortalConfig("turners", "Turners", "https://www.turners.co.nz", quoted_query_builder("https://www.turners.co.nz/Cars/Used-Cars-for-Sale/", "search"), re.compile(r"/Cars/Used-Cars-for-Sale/.+/\d+", re.I), "DEALER", 2),
         PortalConfig("autoport", "Autoport", "https://www.autoport.nz", autoport_search, re.compile(r"/(?:vehicle|used-cars-for-sale)/.+(?:\d{4,}|-[a-z0-9]{6,})", re.I), "DEALER", 10),
     ]
-    return [
+    adapters = [
         FacebookHistoryAdapter(),
         TradeMeMotorsAdapter(),
         *(ConfiguredPortalAdapter(config) for config in configs),
         GenericDealerAdapter(dealer_sites or []),
+    ]
+    return [
+        adapter for adapter in adapters
+        if (include_source_ids is None or adapter.source_id in include_source_ids)
+        and (exclude_source_ids is None or adapter.source_id not in exclude_source_ids)
     ]

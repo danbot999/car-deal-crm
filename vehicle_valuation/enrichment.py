@@ -249,14 +249,16 @@ def enrich_target(
     base = vehicle_from_text(title, page_text, supplied)
     evidence: dict[str, Any] = {"pageTextAvailable": bool(page_text), "imagesFound": len(image_urls)}
     ocr_text = ""
-    if any(value is None for value in (base.year, base.make, base.model, base.kms, base.variant)):
+    # Missing mileage or a cosmetic trim label must not trigger expensive
+    # OCR/vision when year, make and model already establish the identity.
+    if any(value is None for value in (base.year, base.make, base.model)):
         ocr_text, ocr_evidence = ocr_image_text(image_urls)
         evidence["ocr"] = ocr_evidence
         ocr_kms = parse_kms(ocr_text)
         if ocr_kms:
             supplied = {**supplied, "kms": ocr_kms}
             base = vehicle_from_text(title, f"{page_text} {ocr_text}", supplied)
-    missing = [name for name, value in (("year", base.year), ("make", base.make), ("model", base.model), ("kms", base.kms), ("variant", base.variant)) if not value]
+    missing = [name for name, value in (("year", base.year), ("make", base.make), ("model", base.model)) if not value]
     ai_result = None
     if missing:
         ai_result, ai_error = ai_vehicle_extract(title, f"{page_text} {ocr_text}", image_urls)

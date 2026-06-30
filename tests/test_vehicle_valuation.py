@@ -17,7 +17,7 @@ from vehicle_valuation.normalization import (
 from vehicle_valuation.repositories import queue_target, recover_stale_work
 from vehicle_valuation.schemas import TargetRequest
 from vehicle_valuation.scrapers.base import RawListing
-from vehicle_valuation.scrapers.catalog import SOURCE_DEFINITIONS
+from vehicle_valuation.scrapers.catalog import SOURCE_DEFINITIONS, build_inventory_adapters
 from vehicle_valuation.scrapers.generic import BLOCKED_RE, ConfiguredPortalAdapter, PortalConfig
 from vehicle_valuation.scrapers.trademe import parse_rendered_cards, search_query
 from vehicle_valuation.valuation import value_vehicle, verdict_for_percentage
@@ -115,6 +115,23 @@ class NormalizationTests(unittest.TestCase):
 
 
 class PortalFixtureTests(unittest.TestCase):
+    def test_fast_source_tier_is_filtered_without_losing_slow_sources(self) -> None:
+        fast_ids = {
+            adapter.source_id
+            for adapter in build_inventory_adapters(
+                include_source_ids={"facebook_marketplace", "trademe_motors"}
+            )
+        }
+        slow_ids = {
+            adapter.source_id
+            for adapter in build_inventory_adapters(
+                exclude_source_ids={"facebook_marketplace", "trademe_motors"}
+            )
+        }
+        self.assertEqual(fast_ids, {"facebook_marketplace", "trademe_motors"})
+        self.assertTrue({"onlycars", "autoport", "turners"}.issubset(slow_ids))
+        self.assertFalse(fast_ids & slow_ids)
+
     def test_harmless_recaptcha_configuration_is_not_a_block(self) -> None:
         self.assertIsNone(BLOCKED_RE.search('{"recaptchaSiteKey":"public-config-value"}'))
 

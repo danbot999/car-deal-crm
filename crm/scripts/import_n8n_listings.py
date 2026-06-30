@@ -96,6 +96,28 @@ def optional_sqlite_timestamp(value: str | None) -> str | None:
     return sqlite_timestamp(value)
 
 
+def incoming_availability_is_current(
+    connection: sqlite3.Connection,
+    url: str,
+    observed_at: str | None,
+) -> bool:
+    """Do not let an older n8n snapshot undo a newer local availability check."""
+    if not observed_at:
+        return False
+    row = connection.execute(
+        """
+        SELECT
+          CASE
+            WHEN lower(COALESCE(availabilityReason, '')) LIKE '%user_confirmed_sold%' THEN 0
+            ELSE lastCheckedAt IS NULL OR julianday(?) >= julianday(lastCheckedAt)
+          END
+        FROM Listing WHERE facebookUrl = ?
+        """,
+        (observed_at, url),
+    ).fetchone()
+    return row is None or bool(row[0])
+
+
 def normalize_availability_status(value: Any) -> str | None:
     status = str(value or "").strip().upper()
     if status == "SOLD":
@@ -236,7 +258,9 @@ def row_needs_import(
         # Active cars stay visible while the market-index worker researches them.
         return True
 
-    return not existing.get("thumbnailPath")
+    # Missing thumbnails are cosmetic and must not force a slow Facebook detail
+    # reload on every minute-long sync cycle. New listings still get enriched.
+    return False
 
 
 async def fetch_listing_detail(page: Any, row: dict[str, Any]) -> dict[str, Any]:
@@ -436,6 +460,8 @@ def sync_existing_listing_metadata(
         )
         availability_reason = str(row.get("filterReason") or "").strip() or None
         last_seen_at = optional_sqlite_timestamp(row.get("lastSeen"))
+        if not incoming_availability_is_current(connection, url, last_seen_at):
+            continue
         unavailable_since = (
             last_seen_at if availability_status == "POSSIBLY_SOLD" else None
         )

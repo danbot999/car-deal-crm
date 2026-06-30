@@ -7,7 +7,7 @@ from typing import Iterator
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import NullPool
 
 from .config import valuation_database_url
 from .models import Base
@@ -17,7 +17,9 @@ DATABASE_URL = valuation_database_url()
 CONNECT_ARGS = {"check_same_thread": False, "timeout": 30} if DATABASE_URL.startswith("sqlite") else {}
 ENGINE_ARGS = {"connect_args": CONNECT_ARGS, "pool_pre_ping": True}
 if DATABASE_URL.startswith("sqlite"):
-    ENGINE_ARGS.update({"poolclass": QueuePool, "pool_size": 1, "max_overflow": 0})
+    # Short-lived connections cooperate better with WAL than a one-slot pool:
+    # reads can proceed concurrently while SQLite serializes brief writes.
+    ENGINE_ARGS.update({"poolclass": NullPool})
 engine = create_engine(DATABASE_URL, **ENGINE_ARGS)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
@@ -26,7 +28,10 @@ if DATABASE_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
     def configure_sqlite(dbapi_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA journal_mode")
+        journal_mode = str((cursor.fetchone() or [""])[0]).lower()
+        if journal_mode != "wal":
+            cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")
         cursor.execute("PRAGMA busy_timeout=30000")
         cursor.execute("PRAGMA wal_autocheckpoint=1000")

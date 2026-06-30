@@ -151,7 +151,7 @@ export async function getDashboardData(filters: ListingFilters) {
   const [
     listings,
     total,
-    activeTotal,
+    activeValuedTotal,
     hiddenInactive,
     newCount,
     awaitingValuation,
@@ -191,7 +191,15 @@ export async function getDashboardData(filters: ListingFilters) {
     })
   ]);
 
-  const visibleListings = listings.map((listing) => {
+  const fullyReviewedListings = listings.filter(
+    (listing) =>
+      listing.lastCheckedAt != null &&
+      listing.marketValuedAt != null &&
+      listing.lastCheckedAt.getTime() >= listing.marketValuedAt.getTime()
+  );
+  const awaitingAvailabilityReview = activeValuedTotal - fullyReviewedListings.length;
+
+  const visibleListings = fullyReviewedListings.map((listing) => {
     const primaryValuationCents = listing.valuationCents ?? listing.marketValueCents;
     const metrics = calculateDealMetrics(primaryValuationCents, listing.askingPriceCents);
     const useManualValuation = listing.valuationCents != null;
@@ -215,24 +223,19 @@ export async function getDashboardData(filters: ListingFilters) {
     };
   });
 
-  const potentialLeads = await prisma.listing.count({
-    where: {
-      ...activeValuedWhere,
-      marketExpectedSpreadCents: {
-        gt: 0
-      }
-    }
-  });
+  const potentialLeads = fullyReviewedListings.filter(
+    (listing) => (listing.marketExpectedSpreadCents ?? 0) > 0
+  ).length;
 
   return {
     listings: visibleListings,
     stats: {
       total,
-      activeTotal,
-      visible: listings.length,
+      activeTotal: fullyReviewedListings.length,
+      visible: fullyReviewedListings.length,
       hiddenInactive,
       newCount,
-      awaitingValuation,
+      awaitingValuation: awaitingValuation + awaitingAvailabilityReview,
       potentialLeads
     }
   };
