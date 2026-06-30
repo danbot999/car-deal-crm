@@ -213,6 +213,26 @@ def publish_job_progress(job_id: str, stage: str, **details: Any) -> None:
     publish_to_crm(payload)
 
 
+def publishable_decisions(decisions, excluded_limit: int = 250):
+    accepted = [decision for decision in decisions if decision.match.accepted]
+    excluded = sorted(
+        [decision for decision in decisions if not decision.match.accepted],
+        key=lambda decision: decision.match.score,
+        reverse=True,
+    )
+    return accepted + excluded[:excluded_limit], max(0, len(excluded) - excluded_limit)
+
+
+def publishable_evidence_rows(rows, excluded_limit: int = 250):
+    accepted = [row for row in rows if row.accepted]
+    excluded = sorted(
+        [row for row in rows if not row.accepted],
+        key=lambda row: row.match_score,
+        reverse=True,
+    )
+    return accepted + excluded[:excluded_limit], max(0, len(excluded) - excluded_limit)
+
+
 def deliver_publication(publication_id: str) -> dict[str, str]:
     with session_scope() as session:
         publication = session.get(ValuationPublication, publication_id)
@@ -241,6 +261,8 @@ def backfill_publication_outbox() -> int:
             target = session.get(TargetVehicle, run.target_id)
             if target is None:
                 continue
+            if run.valuation_method != "EXACT" and run.algorithm_version != "2.0.0":
+                continue
             evidence_rows = list(session.scalars(
                 select(ValuationComparable)
                 .where(
@@ -248,6 +270,15 @@ def backfill_publication_outbox() -> int:
                 )
                 .order_by(ValuationComparable.match_score.desc())
             ))
+            publish_rows, omitted_excluded = publishable_evidence_rows(evidence_rows)
+            try:
+                coverage = json.loads(run.coverage_json or "{}")
+            except ValueError:
+                coverage = {}
+            coverage["acceptedComparableEvidenceRows"] = sum(1 for row in publish_rows if row.accepted)
+            coverage["excludedEvidenceRowsSampled"] = sum(1 for row in publish_rows if not row.accepted)
+            coverage["excludedEvidenceRowsStoredOnly"] = omitted_excluded
+            run.coverage_json = json.dumps(coverage, default=str, sort_keys=True)
             evidence = [
                 {
                     "source": row.comparable.source_id,
@@ -269,7 +300,7 @@ def backfill_publication_outbox() -> int:
                     "accepted": row.accepted,
                     "exclusionReason": row.exclusion_reason,
                 }
-                for row in evidence_rows
+                for row in publish_rows
             ]
             enqueue_publication(session, run.id, publish_payload(target, run, evidence))
             created += 1
@@ -420,9 +451,17 @@ def process_job(job_id: str) -> dict[str, Any]:
             if cache_is_fresh:
                 successful = 0
                 coverage_items = [{"source": "GROUP_CACHE", "status": "SUCCESS"}]
+            publish_decisions, omitted_excluded = publishable_decisions(result.decisions)
+            coverage_payload = {
+                "sources": coverage_items,
+                "deadlineSeconds": LIVE_SEARCH_BUDGET_SECONDS,
+                "acceptedComparableEvidenceRows": sum(1 for decision in publish_decisions if decision.match.accepted),
+                "excludedEvidenceRowsSampled": sum(1 for decision in publish_decisions if not decision.match.accepted),
+                "excludedEvidenceRowsStoredOnly": omitted_excluded,
+            }
             run = save_valuation(
                 session, job, result, attempted, successful,
-                {"sources": coverage_items, "deadlineSeconds": LIVE_SEARCH_BUDGET_SECONDS},
+                coverage_payload,
             )
             session.flush()
             evidence = [
@@ -446,7 +485,7 @@ def process_job(job_id: str) -> dict[str, Any]:
                     "accepted": decision.match.accepted,
                     "exclusionReason": decision.match.reason,
                 }
-                for decision in result.decisions
+                for decision in publish_decisions
             ]
             payload = publish_payload(job.target, run, evidence)
             publication = enqueue_publication(session, run.id, payload)

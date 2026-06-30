@@ -11,7 +11,7 @@ from vehicle_valuation.dedupe import deduplicate
 from vehicle_valuation.matching import match_comparable
 from vehicle_valuation.models import Base, ValuationRun, utcnow
 from vehicle_valuation.normalization import (
-    NormalizedVehicle, is_full_cash_vehicle, parse_kms, parse_price_cents,
+    NormalizedVehicle, identity_key, is_full_cash_vehicle, parse_kms, parse_price_cents,
     vehicle_from_text,
 )
 from vehicle_valuation.repositories import queue_target, recover_stale_work
@@ -19,7 +19,7 @@ from vehicle_valuation.schemas import TargetRequest
 from vehicle_valuation.scrapers.base import RawListing
 from vehicle_valuation.scrapers.catalog import SOURCE_DEFINITIONS
 from vehicle_valuation.scrapers.generic import BLOCKED_RE, ConfiguredPortalAdapter, PortalConfig
-from vehicle_valuation.scrapers.trademe import parse_rendered_cards
+from vehicle_valuation.scrapers.trademe import parse_rendered_cards, search_query
 from vehicle_valuation.valuation import value_vehicle, verdict_for_percentage
 
 
@@ -83,6 +83,20 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual((audi.year, audi.make, audi.model), (2008, "Audi", "A6"))
         skoda = vehicle_from_text("2009 Skoda Superb 2.0 TDI Auto")
         self.assertEqual(skoda.model, "Superb")
+        self.assertEqual(vehicle_from_text("2012 BMW Series 1").model, "1 Series")
+        self.assertEqual(vehicle_from_text("2000 Subaru Imprezza sun roof").model, "Impreza")
+        self.assertEqual(vehicle_from_text("Nissan bluebird 2007").model, "Bluebird")
+        self.assertEqual(vehicle_from_text("2008 Toyota vanguard 4wd").model, "Vanguard")
+        bmw_730d = vehicle_from_text("2009 BMW 730D LUXURY")
+        self.assertEqual((bmw_730d.year, bmw_730d.make, bmw_730d.model, bmw_730d.variant), (2009, "BMW", "7 Series", "730d"))
+        bmw_740i = vehicle_from_text("2020 BMW 7 Series 740i M-Sport")
+        self.assertEqual((bmw_740i.year, bmw_740i.make, bmw_740i.model, bmw_740i.variant), (2020, "BMW", "7 Series", "740i"))
+        bmw_730ld = vehicle_from_text("2008 730LD BMW")
+        self.assertEqual((bmw_730ld.year, bmw_730ld.make, bmw_730ld.model, bmw_730ld.variant), (2008, "BMW", "7 Series", "730d"))
+        bmw_no_badge = vehicle_from_text("2019 BMW 7 Series M-Sport amp", "$64,990 90,000 km")
+        self.assertEqual((bmw_no_badge.make, bmw_no_badge.model, bmw_no_badge.variant), ("BMW", "7 Series", "M-Sport"))
+        self.assertEqual(identity_key(bmw_730d), "2009|bmw|7 series|730d")
+        self.assertEqual(identity_key(bmw_740i), "2020|bmw|7 series|740i")
 
     def test_engine_capacity_in_description_is_not_used_as_model_year(self) -> None:
         vehicle = vehicle_from_text("Kia Sorento Limited - project", "2000 cc diesel engine")
@@ -130,6 +144,12 @@ class PortalFixtureTests(unittest.TestCase):
         self.assertEqual(len(listings), 1)
         self.assertEqual(listings[0].asking_price_cents, 550_000)
         self.assertEqual(rejected, 2)
+
+    def test_trademe_search_uses_bmw_engine_badge_not_generic_series(self) -> None:
+        bmw = vehicle_from_text("2009 BMW 730D LUXURY")
+        self.assertEqual(search_query(bmw), "2009 BMW 730d")
+        toyota = vehicle_from_text("2018 Toyota Corolla GX")
+        self.assertEqual(search_query(toyota), "2018 Toyota Corolla GX")
 
     def test_every_inventory_portal_parses_json_ld_fixture(self) -> None:
         html = """
@@ -216,21 +236,88 @@ class MatchingAndValuationTests(unittest.TestCase):
         self.assertEqual(result.market_value_cents, 1_700_000)
         self.assertEqual(result.confidence, "EXACT_LOW")
 
+    def test_bmw_series_exact_requires_engine_badge(self) -> None:
+        target = NormalizedVehicle(
+            title="2009 BMW 730D LUXURY",
+            year=2009,
+            make="BMW",
+            model="7 Series",
+            variant="730d",
+        )
+        wrong_badge = RawListing(
+            source_id="trademe",
+            source_listing_id="740i",
+            url="https://example.test/740i",
+            title="2009 BMW 740i",
+            asking_price_cents=999_900,
+            year=2009,
+            make="BMW",
+            model="7 Series",
+            variant="740i",
+        )
+        result = value_vehicle(target, 620_000, [wrong_badge])
+        self.assertEqual(result.status, "EXPANDING_SEARCH")
+        self.assertEqual(result.exact_count, 0)
+        self.assertIsNone(result.market_value_cents)
+
+        right_badge = RawListing(
+            source_id="trademe",
+            source_listing_id="730d",
+            url="https://example.test/730d",
+            title="2009 BMW 730d",
+            asking_price_cents=700_000,
+            year=2009,
+            make="BMW",
+            model="7 Series",
+            variant="730d",
+        )
+        result = value_vehicle(target, 620_000, [wrong_badge, right_badge])
+        self.assertEqual(result.status, "VALUED")
+        self.assertEqual(result.method, "EXACT")
+        self.assertEqual(result.exact_count, 1)
+        self.assertEqual(result.market_value_cents, 700_000)
+        self.assertIn("730d", result.reason)
+
     def test_generation_and_class_fallbacks_always_remain_numeric(self) -> None:
         generation = [
             comparable("g1", 1_700_000, year=2017, url_suffix="g1"),
             comparable("g2", 1_900_000, year=2019, url_suffix="g2"),
+            comparable("g3", 1_850_000, year=2019, url_suffix="g3"),
         ]
         generation_result = value_vehicle(self.target, 1_500_000, generation)
         self.assertEqual(generation_result.status, "PROVISIONAL")
         self.assertEqual(generation_result.method, "GENERATION_ADJUSTED")
         self.assertIsNotNone(generation_result.market_value_cents)
 
-        different_model = comparable("class", 1_600_000, model="Camry", url_suffix="class")
-        class_result = value_vehicle(self.target, 1_500_000, [different_model])
+        different_model = [
+            comparable(f"class-{index}", 1_600_000 + index * 10_000, model="Camry", url_suffix=f"class-{index}")
+            for index in range(8)
+        ]
+        class_result = value_vehicle(self.target, 1_500_000, different_model)
         self.assertEqual(class_result.status, "PROVISIONAL")
         self.assertIn(class_result.method, {"MAKE_CLASS_PROVISIONAL", "CLASS_PROVISIONAL"})
         self.assertIsNotNone(class_result.market_value_cents)
+
+    def test_known_year_never_uses_far_newer_same_model_as_median(self) -> None:
+        old_target = NormalizedVehicle(
+            title="2008 Toyota Corolla", year=2008, make="Toyota", model="Corolla",
+            kms=180_000, transmission="AUTOMATIC", fuel_type="PETROL", body_type="HATCHBACK",
+        )
+        far_newer = [
+            comparable(f"newer-{index}", 2_400_000 + index * 10_000, year=2015, url_suffix=f"newer-{index}")
+            for index in range(12)
+        ]
+        result = value_vehicle(old_target, 500_000, far_newer)
+        self.assertEqual(result.status, "EXPANDING_SEARCH")
+        self.assertIsNone(result.market_value_cents)
+        self.assertIn("far-newer", result.reason)
+
+    def test_incomplete_identity_waits_instead_of_using_all_inventory(self) -> None:
+        vague = NormalizedVehicle(title="Car for sale", make=None, model=None, year=None)
+        result = value_vehicle(vague, 500_000, [comparable("all", 2_000_000)])
+        self.assertEqual(result.status, "EXPANDING_SEARCH")
+        self.assertIsNone(result.market_value_cents)
+        self.assertIn("year, make, and model", result.reason)
 
     def test_empty_index_keeps_expanding_instead_of_terminal_failure(self) -> None:
         result = value_vehicle(self.target, 1_500_000, [])

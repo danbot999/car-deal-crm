@@ -21,6 +21,21 @@ export default async function MarketEvidencePage() {
       availabilityStatus: "ACTIVE",
       status: { notIn: ["SOLD", "ARCHIVED"] }
     },
+    select: {
+      id: true,
+      title: true,
+      askingPriceCents: true,
+      thumbnailPath: true,
+      marketValuationStatus: true,
+      marketConfidence: true,
+      marketValuationMethod: true,
+      marketSearchStage: true,
+      marketComparableCount: true,
+      marketExactComparableCount: true,
+      marketValueCents: true,
+      marketValuedAt: true,
+      firstSeenAt: true
+    },
     orderBy: [{ marketValuedAt: "desc" }, { firstSeenAt: "desc" }]
   });
 

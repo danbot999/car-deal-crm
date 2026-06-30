@@ -32,8 +32,17 @@ _LISTING_RE = re.compile(r"/a/motors/(?:cars|used-cars)/[^?#]+/listing/\d+", re.
 _RESULT_COUNT_RE = re.compile(r"Showing\s+[\d,]+\s+results?", re.I)
 
 
+def search_query(target: NormalizedVehicle) -> str:
+    make = clean_text(target.make)
+    model = clean_text(target.model)
+    variant = clean_text(target.variant)
+    if make.lower() == "bmw" and variant and model.lower().endswith("series"):
+        return " ".join(str(value) for value in (target.year, make, variant) if value)
+    return " ".join(str(value) for value in (target.year, make, model, variant) if value)
+
+
 def search_url(target: NormalizedVehicle) -> str:
-    query = " ".join(str(value) for value in (target.year, target.make, target.model) if value)
+    query = search_query(target)
     return f"https://www.trademe.co.nz/a/motors/cars/search?search_string={quote_plus(query)}"
 
 

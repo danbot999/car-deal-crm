@@ -131,12 +131,12 @@ export default async function MarketEvidenceDetailPage({ params }: { params: Pro
 
         <section className="mt-6 rounded-[2rem] border border-slate-200 bg-white p-6">
           <h2 className="text-2xl font-semibold">Accepted comparable links ({accepted.length})</h2>
-          <p className="mt-2 text-sm text-slate-500">Every accepted deduplicated asking price used by this valuation.</p>
+          <p className="mt-2 text-sm text-slate-500">Only these deduplicated asking prices are used in the market median.</p>
           <div className="mt-5"><EvidenceRows items={accepted} /></div>
         </section>
 
         <details className="mt-6 rounded-[2rem] border border-slate-200 bg-white p-6">
-          <summary className="cursor-pointer text-xl font-semibold">Excluded evidence audit ({excluded.length})</summary>
+          <summary className="cursor-pointer text-xl font-semibold">Excluded search results - not used in valuation ({excluded.length})</summary>
           <div className="mt-5"><EvidenceRows items={excluded} /></div>
         </details>
       </main>

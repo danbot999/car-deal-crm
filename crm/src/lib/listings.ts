@@ -113,13 +113,22 @@ function originFilter(origin?: string): Prisma.ListingWhereInput | null {
 }
 
 export async function getDashboardData(filters: ListingFilters) {
+  const valuedMarketWhere: Prisma.ListingWhereInput = {
+    marketValuationStatus: "VALUED",
+    marketValueCents: { not: null }
+  };
   const where: Prisma.ListingWhereInput = {
     availabilityStatus: { in: dashboardVisibleAvailabilityStatuses },
-    status: { notIn: ["SOLD", "ARCHIVED"] }
+    status: { notIn: ["SOLD", "ARCHIVED"] },
+    ...valuedMarketWhere
   };
   const activeWhere: Prisma.ListingWhereInput = {
     availabilityStatus: { in: dashboardVisibleAvailabilityStatuses },
     status: { notIn: ["SOLD", "ARCHIVED"] }
+  };
+  const activeValuedWhere: Prisma.ListingWhereInput = {
+    ...activeWhere,
+    ...valuedMarketWhere
   };
   const query = filters.q?.trim();
   const selectedOrigin: VehicleOrigin =
@@ -149,13 +158,19 @@ export async function getDashboardData(filters: ListingFilters) {
   ] = await Promise.all([
     prisma.listing.findMany({
       where,
+      // Comparable evidence can be several megabytes per listing. Loading it for
+      // every dashboard card overwhelms Prisma/Node; the detail route fetches it
+      // only for the selected listing.
+      omit: {
+        marketComparablesJson: true
+      },
       include: {
         adminFlip: true
       },
       orderBy: [{ firstSeenAt: "desc" }, { createdAt: "desc" }]
     }),
     prisma.listing.count(),
-    prisma.listing.count({ where: activeWhere }),
+    prisma.listing.count({ where: activeValuedWhere }),
     prisma.listing.count({
       where: {
         OR: [
@@ -168,7 +183,10 @@ export async function getDashboardData(filters: ListingFilters) {
     prisma.listing.count({
       where: {
         ...activeWhere,
-        marketValuationStatus: { notIn: ["VALUED", "PROVISIONAL", "INDICATIVE"] }
+        OR: [
+          { marketValuationStatus: { not: "VALUED" } },
+          { marketValueCents: null }
+        ]
       }
     })
   ]);
@@ -199,7 +217,7 @@ export async function getDashboardData(filters: ListingFilters) {
 
   const potentialLeads = await prisma.listing.count({
     where: {
-      ...activeWhere,
+      ...activeValuedWhere,
       marketExpectedSpreadCents: {
         gt: 0
       }

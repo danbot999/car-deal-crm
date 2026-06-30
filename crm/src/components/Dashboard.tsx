@@ -71,7 +71,6 @@ type DashboardListing = {
   marketSourcesAttempted: number;
   marketSourcesSuccessful: number;
   marketSourceBreakdownJson: string | null;
-  marketComparablesJson: string | null;
   marketValuedAt: Date | null;
   displayTargetSellPriceCents: number | null;
   displayMaxBuyPriceCents: number | null;
@@ -294,32 +293,6 @@ function AiSnapshot({ listing }: { listing: DashboardListing }) {
   );
 }
 
-type MarketComparable = {
-  source?: string;
-  title?: string;
-  url?: string;
-  priceCents?: number;
-  year?: number | null;
-  kms?: number | null;
-  region?: string | null;
-  matchTier?: string;
-  matchScore?: number;
-  accepted?: boolean;
-  exclusionReason?: string | null;
-};
-
-function marketComparables(value: string | null): MarketComparable[] {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is MarketComparable => Boolean(item && typeof item === "object"))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 const marketVerdictLabels: Record<string, string> = {
   EXCELLENT_DEAL: "Excellent deal",
   GOOD_DEAL: "Good deal",
@@ -353,8 +326,6 @@ function marketProgress(value: string | null) {
 
 function MarketValuationPanel({ listing }: { listing: DashboardListing }) {
   const valued = listing.marketValueCents != null;
-  const allEvidence = marketComparables(listing.marketComparablesJson);
-  const evidence = allEvidence.filter((item) => item.accepted !== false);
   const progress = marketProgress(listing.marketSearchProgressJson);
   const difference = listing.marketDifferenceCents;
   const good = difference != null && difference > 0;
@@ -458,35 +429,6 @@ function MarketValuationPanel({ listing }: { listing: DashboardListing }) {
           Open Market Evidence
         </Link>
       </div>
-
-      {evidence.length > 0 ? (
-        <details className="mt-5 rounded-2xl border border-slate-200 bg-white/90">
-          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-bold text-slate-800">
-            View {evidence.length} accepted comparable{evidence.length === 1 ? "" : "s"}
-          </summary>
-          <div className="grid gap-2 border-t border-slate-100 p-3">
-            {evidence.map((item, index) => (
-              <a
-                className="grid gap-2 rounded-2xl bg-slate-50 p-3 text-sm transition hover:bg-cyan-50 sm:grid-cols-[minmax(0,1fr)_auto]"
-                href={item.url}
-                key={`${item.url ?? item.title}-${index}`}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <span>
-                  <strong className="block text-slate-900">{item.title ?? "Comparable vehicle"}</strong>
-                  <span className="mt-1 block text-xs text-slate-500">
-                    {[item.source, item.year, item.kms ? `${item.kms.toLocaleString("en-NZ")} km` : null, item.region, item.matchTier]
-                      .filter(Boolean)
-                      .join(" | ")}
-                  </span>
-                </span>
-                <strong className="text-slate-950">{formatMoney(item.priceCents ?? null)}</strong>
-              </a>
-            ))}
-          </div>
-        </details>
-      ) : null}
     </section>
   );
 }
@@ -635,9 +577,9 @@ export function Dashboard({ filters, listings, stats }: DashboardProps) {
                 A cleaner command centre for finding underpriced cars.
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">
-                Verified Marketplace listings flow in from n8n. One Valuation
-                button opens the whole workflow: Trade Me value, deal math, and
-                AI inspection guidance.
+                Marketplace listings flow in from n8n, but this dashboard only
+                shows cars after the market valuation has completed. Pending
+                cars stay in the background queue until they have evidence.
               </p>
             </div>
             <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
@@ -662,10 +604,10 @@ export function Dashboard({ filters, listings, stats }: DashboardProps) {
 
         <section className="mt-8 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           <StatCard label="Total listings" value={stats.total} hint="Imported into the CRM" />
-          <StatCard label="Active/checking" value={stats.activeTotal} hint="Shown by default" />
+          <StatCard label="Valued active" value={stats.activeTotal} hint="Shown by default" />
           <StatCard label="Visible now" value={stats.visible} hint="Matching current filters" />
           <StatCard label="Hidden inactive" value={stats.hiddenInactive} hint="Sold, unavailable, or expired" />
-          <StatCard label="Awaiting market index" value={stats.awaitingValuation} hint="Queued for comparable search" />
+          <StatCard label="Hidden until valued" value={stats.awaitingValuation} hint="Queued for comparable search" />
           <StatCard label="Potential leads" value={stats.potentialLeads} hint="Positive 80% target spread" />
         </section>
 
@@ -716,10 +658,10 @@ export function Dashboard({ filters, listings, stats }: DashboardProps) {
           {listings.length === 0 ? (
             <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-xl shadow-slate-200/80">
               <p className="text-lg font-semibold text-slate-900">
-                No listings match those filters.
+                No valued listings match those filters.
               </p>
               <p className="mt-2 text-sm text-slate-500">
-                Clear the filters or let the monitor collect more cars.
+                Clear the filters or let the valuation worker finish more cars.
               </p>
             </div>
           ) : (

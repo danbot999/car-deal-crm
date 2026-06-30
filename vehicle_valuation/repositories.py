@@ -26,6 +26,8 @@ from .scrapers.catalog import source_definitions
 from .scrapers.directories import DiscoveryResult
 from .valuation import ValuationResult
 
+ALGORITHM_VERSION = "2.0.0"
+
 
 def stable_crm_listing_id(url: str) -> str:
     from hashlib import sha1
@@ -550,8 +552,9 @@ def save_valuation(
         adjustment_json=json.dumps(result.adjustment_summary, default=str, sort_keys=True),
         criteria_json=json.dumps({
             "ladder": ["EXACT", "GENERATION_ADJUSTED", "MODEL_ADJUSTED", "MAKE_CLASS_PROVISIONAL", "CLASS_PROVISIONAL"],
-            "exactRule": "same canonical year, make and model; every deduplicated fixed price",
+            "exactRule": "same canonical year, make and model; BMW Series listings also require the same engine badge such as 730d or 740i",
         }),
+        algorithm_version=ALGORITHM_VERSION,
     )
     session.add(run)
     session.flush()

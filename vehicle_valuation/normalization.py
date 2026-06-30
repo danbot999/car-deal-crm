@@ -41,6 +41,7 @@ MAKE_ALIASES = {
     "toyata": "Toyota",
     "mazada": "Mazda",
     "mazada": "Mazda",
+    "mitshibushi": "Mitsubishi",
     "mitsibishi": "Mitsubishi",
     "hyndai": "Hyundai",
 }
@@ -63,17 +64,17 @@ REGIONS = {
 
 # Longer aliases are tested first. Canonical models deliberately exclude trim text.
 MODEL_CATALOG: dict[str, dict[str, str]] = {
-    "Subaru": {"legacy": "Legacy", "outback": "Outback", "impreza": "Impreza", "forester": "Forester", "exiga": "Exiga", "levorg": "Levorg", "brz": "BRZ", "xv": "XV"},
+    "Subaru": {"legacy": "Legacy", "outback": "Outback", "impreza": "Impreza", "imprezza": "Impreza", "forester": "Forester", "exiga": "Exiga", "levorg": "Levorg", "brz": "BRZ", "xv": "XV"},
     "Suzuki": {"grand vitara": "Grand Vitara", "swift": "Swift", "alto": "Alto", "splash": "Splash", "sx4": "SX4", "jimny": "Jimny", "vitara": "Vitara", "kizashi": "Kizashi"},
     "Mazda": {"mazda 6": "Atenza", "mazda6": "Atenza", "atenza": "Atenza", "mazda 3": "Axela", "mazda3": "Axela", "axela": "Axela", "mazda 2": "Demio", "mazda2": "Demio", "demio": "Demio", "cx 5": "CX-5", "cx5": "CX-5", "premacy": "Premacy", "verisa": "Verisa", "biante": "Biante", "rx 8": "RX-8", "mpv": "MPV"},
-    "Toyota": {"land cruiser": "Land Cruiser", "mark x": "Mark X", "corolla fielder": "Corolla Fielder", "corolla": "Corolla", "aqua": "Aqua", "prius": "Prius", "camry": "Camry", "auris": "Auris", "vitz": "Vitz", "yaris": "Yaris", "estima": "Estima", "alphard": "Alphard", "wish": "Wish", "rav4": "RAV4", "highlander": "Highlander", "hiace": "Hiace", "hilux": "Hilux", "blade": "Blade"},
-    "Nissan": {"bluebird sylphy": "Bluebird Sylphy", "tiida latio": "Tiida Latio", "x trail": "X-Trail", "xtrail": "X-Trail", "tiida": "Tiida", "note": "Note", "march": "March", "serena": "Serena", "skyline": "Skyline", "fuga": "Fuga", "teana": "Teana", "dualis": "Dualis", "qashqai": "Qashqai", "leaf": "Leaf", "navara": "Navara"},
-    "Honda": {"civic": "Civic", "accord": "Accord", "fit": "Fit", "jazz": "Fit", "odyssey": "Odyssey", "stream": "Stream", "cr v": "CR-V", "crv": "CR-V", "insight": "Insight", "freed": "Freed"},
-    "Mitsubishi": {"outlander": "Outlander", "lancer": "Lancer", "colt": "Colt", "asx": "ASX", "pajero": "Pajero", "triton": "Triton", "delica": "Delica", "mirage": "Mirage"},
+    "Toyota": {"land cruiser": "Land Cruiser", "mark x": "Mark X", "corolla fielder": "Corolla Fielder", "corolla": "Corolla", "aqua": "Aqua", "prius": "Prius", "camry": "Camry", "auris": "Auris", "vitz": "Vitz", "yaris": "Yaris", "estima": "Estima", "alphard": "Alphard", "wish": "Wish", "rav4": "RAV4", "highlander": "Highlander", "hiace": "Hiace", "hilux": "Hilux", "blade": "Blade", "vanguard": "Vanguard", "runx": "RunX", "allex": "Allex", "allion": "Allion", "belta": "Belta"},
+    "Nissan": {"bluebird sylphy": "Bluebird Sylphy", "bluebird": "Bluebird", "tiida latio": "Tiida Latio", "x trail": "X-Trail", "xtrail": "X-Trail", "tiida": "Tiida", "note": "Note", "march": "March", "serena": "Serena", "skyline": "Skyline", "fuga": "Fuga", "teana": "Teana", "dualis": "Dualis", "qashqai": "Qashqai", "leaf": "Leaf", "navara": "Navara", "laurel": "Laurel"},
+    "Honda": {"crossroad": "Crossroad", "crossroda": "Crossroad", "civic": "Civic", "accord": "Accord", "fit": "Fit", "jazz": "Fit", "odyssey": "Odyssey", "stream": "Stream", "cr v": "CR-V", "crv": "CR-V", "insight": "Insight", "freed": "Freed", "stepwagon": "Stepwagon"},
+    "Mitsubishi": {"l200": "L200", "sigma": "Sigma", "outlander": "Outlander", "lancer": "Lancer", "colt": "Colt", "asx": "ASX", "pajero": "Pajero", "triton": "Triton", "delica": "Delica", "mirage": "Mirage"},
     "Volkswagen": {"passat": "Passat", "touareg": "Touareg", "tiguan": "Tiguan", "polo": "Polo", "golf": "Golf", "jetta": "Jetta", "amarok": "Amarok"},
     "Holden": {"commodore": "Commodore", "captiva": "Captiva", "cruze": "Cruze", "astra": "Astra", "barina": "Barina", "colorado": "Colorado"},
     "Ford": {"falcon": "Falcon", "territory": "Territory", "focus": "Focus", "mondeo": "Mondeo", "ranger": "Ranger", "fiesta": "Fiesta", "escape": "Escape", "kuga": "Kuga"},
-    "BMW": {"3 series": "3 Series", "5 series": "5 Series", "1 series": "1 Series", "7 series": "7 Series", "x1": "X1", "x3": "X3", "x5": "X5", "x6": "X6", "z4": "Z4"},
+    "BMW": {"series 1": "1 Series", "1 series": "1 Series", "series 3": "3 Series", "3 series": "3 Series", "series 5": "5 Series", "5 series": "5 Series", "series 7": "7 Series", "7 series": "7 Series", "x1": "X1", "x3": "X3", "x5": "X5", "x6": "X6", "z4": "Z4"},
     "Mercedes-Benz": {"c class": "C-Class", "e class": "E-Class", "a class": "A-Class", "b class": "B-Class", "s class": "S-Class", "ml class": "M-Class", "m class": "M-Class", "cla": "CLA", "glc": "GLC", "gle": "GLE"},
     "Audi": {"a1": "A1", "a3": "A3", "a4": "A4", "a5": "A5", "a6": "A6", "a7": "A7", "a8": "A8", "q2": "Q2", "q3": "Q3", "q5": "Q5", "q7": "Q7", "q8": "Q8", "tt": "TT"},
     "Lexus": {"is250": "IS 250", "is 250": "IS 250", "gs300": "GS 300", "gs 300": "GS 300", "rx350": "RX 350", "rx 350": "RX 350", "ct200h": "CT 200h", "ct 200h": "CT 200h", "ls460": "LS 460", "ls 460": "LS 460"},
@@ -101,7 +102,10 @@ SHORTHAND_MODELS: list[tuple[re.Pattern[str], str, str]] = [
 
 TRIM_RE = re.compile(
     r"(?i)\b(?:black\s+edition|limited|sport|sports|turbo|gt|gts|sti|wrx|gx|glx|lx|rs|"
-    r"type\s+r|m\s*sport|highline|comfortline|trendline|4wd|awd|manual|automatic|diesel|petrol|hybrid)\b"
+    r"type\s+r|m[-\s]*sport|highline|comfortline|trendline|4wd|awd|manual|automatic|diesel|petrol|hybrid)\b"
+)
+BMW_BADGE_RE = re.compile(
+    r"(?i)\b(m[1-8]|[1-8][1-8]\d\s*(?:l\s*)?(?:d|i|e|xi|xd|ci|is))\b"
 )
 
 
@@ -169,14 +173,30 @@ def catalog_model(text: str, make: str | None) -> str | None:
         if (not make or make == inferred_make) and pattern.search(text):
             return model
     if make == "BMW":
-        match = re.search(r"\b([1-7][1-5]\d(?:d|i|xi|dix|is)?)\b", normalized, re.I)
+        match = BMW_BADGE_RE.search(text)
         if match:
-            return f"{match.group(1)[0]} Series"
+            badge = normalize_bmw_badge(match.group(1))
+            if badge.startswith("m") and len(badge) == 2 and badge[1].isdigit():
+                return f"{badge[1]} Series"
+            return f"{badge[0]} Series"
     if make == "Mercedes-Benz":
         match = re.search(r"\b([abcegms])\s*[- ]?(\d{2,3})\b", normalized, re.I)
         if match:
             return f"{match.group(1).upper()}-Class"
     return None
+
+
+def normalize_bmw_badge(value: str | None) -> str:
+    badge = re.sub(r"[^a-zA-Z0-9]+", "", clean_text(value)).lower()
+    long_wheelbase = re.fullmatch(r"([1-8][1-8]\d)l([die])", badge)
+    if long_wheelbase:
+        return f"{long_wheelbase.group(1)}{long_wheelbase.group(2)}"
+    return badge
+
+
+def detect_bmw_badge(text: str) -> str | None:
+    match = BMW_BADGE_RE.search(text)
+    return normalize_bmw_badge(match.group(1)) if match else None
 
 
 def normalize_model(value: str | None, make: str | None = None) -> str | None:
@@ -206,6 +226,10 @@ def normalize_model(value: str | None, make: str | None = None) -> str | None:
 def detect_variant(title: str, model: str | None, supplied: str | None = None) -> str | None:
     if clean_text(supplied):
         return clean_text(supplied)[:220]
+    if model and (normalize_token(model) or "").endswith("series"):
+        badge = detect_bmw_badge(title)
+        if badge:
+            return badge
     parenthetical = re.search(r"\(([^)]{2,60})\)", title)
     if parenthetical and not YEAR_RE.fullmatch(parenthetical.group(1).strip()):
         return clean_text(parenthetical.group(1))
@@ -349,7 +373,8 @@ def vehicle_from_text(title: str, extra_text: str = "", supplied: dict[str, Any]
     region = normalize_region(explicit_region) if explicit_region else normalize_region(combined)
     supplied_kms = supplied.get("kms")
     kms = supplied_kms if isinstance(supplied_kms, int) and 100 <= supplied_kms <= 2_000_000 else parse_kms(combined)
-    variant = detect_variant(clean_title, model, supplied.get("variant"))
+    variant_source = combined if make == "BMW" and model and (normalize_token(model) or "").endswith("series") else clean_title
+    variant = detect_variant(variant_source, model, supplied.get("variant"))
     return NormalizedVehicle(
         title=clean_title,
         year=year,
@@ -370,6 +395,9 @@ def identity_key(vehicle: NormalizedVehicle) -> str | None:
     if not make or not model:
         return None
     year = str(vehicle.year) if vehicle.year else "unknown"
+    variant = normalize_token(vehicle.variant)
+    if make == "bmw" and model.endswith("series") and variant:
+        return f"{year}|{make}|{model}|{variant}"
     return f"{year}|{make}|{model}"
 
 

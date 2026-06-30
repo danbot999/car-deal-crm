@@ -11,6 +11,12 @@ from .dedupe import deduplicate
 from .matching import MatchResult, compatible, same_identity
 from .normalization import NormalizedVehicle, normalize_token
 
+MIN_GENERATION_COMPARABLES = 3
+MIN_MODEL_ADJUSTED_COMPARABLES = 5
+MIN_MAKE_CLASS_COMPARABLES = 8
+MIN_NZ_CLASS_COMPARABLES = 12
+MODEL_ADJUSTED_MAX_YEAR_DELTA = 5
+
 
 @dataclass
 class ComparableDecision:
@@ -75,7 +81,23 @@ def year_delta(target: NormalizedVehicle, item: Any) -> int | None:
     return abs(target.year - item_year) if target.year and item_year else None
 
 
+def has_core_identity(target: NormalizedVehicle) -> bool:
+    return bool(normalize_token(target.make) and normalize_token(target.model) and target.year)
+
+
+def requires_variant_match(target: NormalizedVehicle) -> bool:
+    return bool(normalize_token(target.make) == "bmw" and normalize_token(target.variant))
+
+
+def same_required_variant(target: NormalizedVehicle, item: Any) -> bool:
+    if not requires_variant_match(target):
+        return True
+    return compatible(target.variant, getattr(item, "variant", None))
+
+
 def class_compatible(target: NormalizedVehicle, item: Any) -> bool:
+    if not target.body_type and not target.fuel_type:
+        return False
     checks = []
     if target.body_type:
         checks.append(compatible(target.body_type, getattr(item, "body_type", None)))
@@ -130,9 +152,15 @@ def adjusted_prices(
 
 
 def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, list[Any], list[int], dict[str, Any]]:
+    if not has_core_identity(target):
+        return "EXPANDING_SEARCH", [], [], {
+            "reason": "A numeric market value needs a confirmed year, make, and model before comparables are trusted."
+        }
+
     exact_model = [item for item in items if usable(item) and same_identity(target, item)]
+    exact_identity = [item for item in exact_model if same_required_variant(target, item)]
     exact_year = [
-        item for item in exact_model
+        item for item in exact_identity
         if target.year is not None and getattr(item, "year", None) == target.year
     ]
     if exact_year:
@@ -140,25 +168,38 @@ def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, lis
         return "EXACT", exact_year, prices, {"rawMedianCents": round(median(prices))}
 
     generation = [
-        item for item in exact_model
+        item for item in exact_identity
         if year_delta(target, item) is not None and year_delta(target, item) <= 2
     ]
-    if generation:
+    if len(generation) >= MIN_GENERATION_COMPARABLES:
         adjusted, summary = adjusted_prices(target, generation, adjust_kms=True)
         return "GENERATION_ADJUSTED", generation, adjusted, summary
 
-    if exact_model:
-        adjusted, summary = adjusted_prices(target, exact_model, adjust_kms=True)
-        return "MODEL_ADJUSTED", exact_model, adjusted, summary
+    model_window = [
+        item for item in exact_identity
+        if year_delta(target, item) is not None
+        and year_delta(target, item) <= MODEL_ADJUSTED_MAX_YEAR_DELTA
+    ]
+    if (
+        len(model_window) >= MIN_MODEL_ADJUSTED_COMPARABLES
+        and any((year_delta(target, item) or 99) <= 3 for item in model_window)
+    ):
+        adjusted, summary = adjusted_prices(target, model_window, adjust_kms=True)
+        return "MODEL_ADJUSTED", model_window, adjusted, {
+            **summary,
+            "yearWindow": f"+/-{MODEL_ADJUSTED_MAX_YEAR_DELTA}",
+            "safetyRule": "Far-newer or far-older same-model listings are not used for known-year targets.",
+        }
 
     make_class = [
         item for item in items
         if usable(item)
         and same_make(target, item)
         and class_compatible(target, item)
-        and (year_delta(target, item) is None or year_delta(target, item) <= 3)
+        and year_delta(target, item) is not None
+        and year_delta(target, item) <= 2
     ]
-    if make_class:
+    if len(make_class) >= MIN_MAKE_CLASS_COMPARABLES:
         adjusted, summary = adjusted_prices(target, make_class, adjust_kms=True)
         return "MAKE_CLASS_PROVISIONAL", make_class, adjusted, summary
 
@@ -166,14 +207,24 @@ def select_cohort(target: NormalizedVehicle, items: list[Any]) -> tuple[str, lis
         item for item in items
         if usable(item)
         and class_compatible(target, item)
-        and (year_delta(target, item) is None or year_delta(target, item) <= 3)
+        and year_delta(target, item) is not None
+        and year_delta(target, item) <= 2
     ]
-    if not nz_class:
-        nz_class = [item for item in items if usable(item)]
-    if nz_class:
+    if len(nz_class) >= MIN_NZ_CLASS_COMPARABLES:
         adjusted, summary = adjusted_prices(target, nz_class, adjust_kms=True)
         return "CLASS_PROVISIONAL", nz_class, adjusted, summary
-    return "EXPANDING_SEARCH", [], [], {}
+    return "EXPANDING_SEARCH", [], [], {
+        "reason": (
+            "No safe evidence cohort is ready yet. The worker will keep searching instead of using "
+            "far-newer, far-older, or unidentified vehicles as the market median."
+        ),
+        "sameModelFound": len(exact_model),
+        "sameRequiredVariantFound": len(exact_identity),
+        "nearGenerationFound": len(generation),
+        "modelWindowFound": len(model_window),
+        "makeClassFound": len(make_class),
+        "nzClassFound": len(nz_class),
+    }
 
 
 def confidence_for(method: str, count: int) -> str:
@@ -191,7 +242,13 @@ def value_vehicle(target: NormalizedVehicle, asking_price_cents: int, items: Ite
     method, accepted_items, calculated_prices, adjustment = select_cohort(target, unique_items)
     exact_count = sum(
         1 for item in unique_items
-        if usable(item) and same_identity(target, item) and target.year and getattr(item, "year", None) == target.year
+        if (
+            usable(item)
+            and same_identity(target, item)
+            and same_required_variant(target, item)
+            and target.year
+            and getattr(item, "year", None) == target.year
+        )
     )
     accepted_ids = {id(item) for item in accepted_items}
     decisions = [
@@ -208,13 +265,18 @@ def value_vehicle(target: NormalizedVehicle, asking_price_cents: int, items: Ite
     ]
 
     if not accepted_items:
+        reason = str(
+            adjustment.get("reason")
+            or "No usable prices are indexed yet; the worker will keep expanding the nationwide search."
+        )
         return ValuationResult(
             status="EXPANDING_SEARCH", market_value_cents=None, comparable_count=0,
             lowest_cents=None, highest_cents=None, auckland_median_cents=None,
             difference_cents=None, difference_percent=None, relation=None, verdict=None,
-            confidence="SEARCHING", reason="No usable prices are indexed yet; the worker will keep expanding the nationwide search.",
+            confidence="SEARCHING", reason=reason,
             target_sell_cents=None, max_buy_cents=None, expected_spread_cents=None,
             decisions=decisions, method=method, exact_count=exact_count,
+            adjustment_summary=adjustment,
         )
 
     raw_prices = [int(item.asking_price_cents) for item in accepted_items]
@@ -234,9 +296,12 @@ def value_vehicle(target: NormalizedVehicle, asking_price_cents: int, items: Ite
     target_sell = round(market_value * 0.8)
     direction = "below" if difference > 0 else "above" if difference < 0 else "at"
     if method == "EXACT":
+        target_name = f"{target.year} {target.make} {target.model}"
+        if requires_variant_match(target):
+            target_name = f"{target_name} {target.variant}"
         reason = (
             f"The asking price is {abs(percentage):.1f}% {direction} the nationwide raw median "
-            f"of every {target.year} {target.make} {target.model} fixed-price listing found ({len(accepted_items)} deduplicated)."
+            f"of every {target_name} fixed-price listing found ({len(accepted_items)} deduplicated)."
         )
     else:
         reason = (
